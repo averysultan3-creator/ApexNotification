@@ -15,6 +15,7 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import BOT_USERNAME
@@ -96,18 +97,29 @@ async def cmd_start(
         existing_admins = await list_bot_users(session, role="super_admin")
         if not existing_admins:
             tg_user = message.from_user
-            bot_user = await create_bot_user(
-                session,
-                tg_id=tg_user.id,
-                username=tg_user.username,
-                role="super_admin",
-            )
-            await session.commit()
-            user_role = "super_admin"
-            logger.info(
-                "First-user super_admin created: tg_id=%s username=%s",
-                tg_user.id, tg_user.username,
-            )
+            try:
+                bot_user = await create_bot_user(
+                    session,
+                    tg_id=tg_user.id,
+                    username=tg_user.username,
+                    role="super_admin",
+                )
+                await session.commit()
+                user_role = "super_admin"
+                logger.info(
+                    "First-user super_admin created: tg_id=%s username=%s",
+                    tg_user.id, tg_user.username,
+                )
+            except IntegrityError:
+                # Race condition: another concurrent /start already created the user
+                await session.rollback()
+                admins = await list_bot_users(session, role="super_admin")
+                if admins:
+                    for a in admins:
+                        if a.telegram_user_id == tg_user.id:
+                            bot_user = a
+                            user_role = "super_admin"
+                            break
 
     # ── Route by role ─────────────────────────────────────────────────────────
     if user_role == "super_admin":
