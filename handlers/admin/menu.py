@@ -159,7 +159,7 @@ async def role_toggle(callback: CallbackQuery, callback_data: RoleCb, session: A
     if not user:
         await callback.answer("Не найден", show_alert=True)
         return
-    await toggle_bot_user(session, user.telegram_user_id)
+    await toggle_bot_user(session, user.id)
     await session.commit()
     await callback.answer("Статус изменён")
     view_cb = RoleCb(action="view", uid=callback_data.uid)
@@ -220,8 +220,7 @@ async def role_set(callback: CallbackQuery, callback_data: RoleCb, state: FSMCon
         await state.clear()
         return
     user = await create_bot_user(
-        session, telegram_user_id=tg_id, role=role,
-        telegram_username=None, client_id=None, is_active=True,
+        session, tg_id=tg_id, username=None, role=role,
     )
     await session.commit()
     await state.clear()

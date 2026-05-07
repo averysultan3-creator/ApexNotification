@@ -95,10 +95,21 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Dependencies installed." -ForegroundColor Green
 
-# ── Create .env from template ─────────────────────────────────────────────────
+# ── Create .env with real values ─────────────────────────────────────────────
+# Repo is private — credentials stored here for zero-touch deployment.
+# First /start → automatic super_admin. No ADMIN_IDS needed.
 if (-not (Test-Path ".env")) {
-    Copy-Item ".env.example" ".env"
-    Write-Host "[OK] .env created from template." -ForegroundColor Green
+    $envContent = @"
+BOT_TOKEN=8656058191:AAE0ervW58sqNV9tAqfhNjrixM_BIBfG788
+ADMIN_IDS=
+BOT_USERNAME=your_bot_username_without_at
+DATABASE_URL=sqlite+aiosqlite:///./leadform_hub.db
+LOG_LEVEL=INFO
+PAGE_SIZE=10
+"@
+    $envContent | Set-Content ".env" -Encoding UTF8
+    Write-Host "[OK] .env создан с токеном бота." -ForegroundColor Green
+    Write-Host "[!]  Осталось только заполнить BOT_USERNAME в .env" -ForegroundColor Yellow
 } else {
     Write-Host "[OK] .env already exists." -ForegroundColor Green
 }
@@ -122,18 +133,17 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 Write-Host "  NEXT STEPS:" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  1. Open .env in a text editor:" -ForegroundColor White
+Write-Host "  1. Открой .env и заполни BOT_USERNAME:" -ForegroundColor White
 Write-Host "       notepad $PROJECT_DIR\.env" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  2. Fill in these values:" -ForegroundColor White
-Write-Host "       BOT_TOKEN    = get from @BotFather in Telegram" -ForegroundColor Gray
-Write-Host "       ADMIN_IDS    = your Telegram numeric ID (from @userinfobot)" -ForegroundColor Gray
-Write-Host "       BOT_USERNAME = your bot's @username (without @)" -ForegroundColor Gray
+Write-Host "     BOT_USERNAME = username бота без @ (например: mybot)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  3. Start the bot:" -ForegroundColor White
+Write-Host "  2. Запусти бот:" -ForegroundColor White
 Write-Host "       $PROJECT_DIR\run_windows.bat" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  4. For future updates:" -ForegroundColor White
+Write-Host "  3. Первый кто напишет /start боту — станет super_admin автоматически." -ForegroundColor Green
+Write-Host ""
+Write-Host "  4. Для будущих обновлений:" -ForegroundColor White
 Write-Host "       $PROJECT_DIR\update_windows.bat" -ForegroundColor Gray
 Write-Host ""
 Read-Host "Press Enter to close"

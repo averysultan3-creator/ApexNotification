@@ -3,6 +3,10 @@ handlers/shared/start.py — role-aware /start handler.
 
 This router has NO middleware — it handles /start for ALL user types and routes
 to the appropriate panel based on the injected user_role.
+
+First-user logic:
+    If no super_admin exists in the database yet, the very first person who
+    sends /start is automatically promoted to super_admin and stored in DB.
 """
 import logging
 from datetime import datetime, timezone
@@ -14,8 +18,9 @@ from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import BOT_USERNAME
-from keyboards.admin_kb import main_menu_kb, MenuCb
+from keyboards.admin_kb import main_menu_kb
 from services.today_service import get_today_dashboard
+from services.user_service import list_bot_users, create_bot_user
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -80,9 +85,31 @@ async def cmd_start(
     session: AsyncSession,
     state: FSMContext,
     user_role: str = "anonymous",
+    bot_user=None,
 ) -> None:
     await state.clear()
 
+    # ── First-user auto-promotion ──────────────────────────────────────────────
+    # If nobody is super_admin yet in the DB, the very first /start makes this
+    # user super_admin permanently.
+    if user_role == "anonymous":
+        existing_admins = await list_bot_users(session, role="super_admin")
+        if not existing_admins:
+            tg_user = message.from_user
+            bot_user = await create_bot_user(
+                session,
+                tg_id=tg_user.id,
+                username=tg_user.username,
+                role="super_admin",
+            )
+            await session.commit()
+            user_role = "super_admin"
+            logger.info(
+                "First-user super_admin created: tg_id=%s username=%s",
+                tg_user.id, tg_user.username,
+            )
+
+    # ── Route by role ─────────────────────────────────────────────────────────
     if user_role == "super_admin":
         try:
             today = await get_today_dashboard(session, site_id=_SITE_ID)
@@ -111,11 +138,9 @@ async def cmd_start(
         )
         return
 
-    # Anonymous — check if it's a form deep link (handled by user_flow_router first)
-    # If we get here, it's a plain /start from an unregistered user
+    # Anonymous with existing admins — not authorised
     await message.answer(
         "👋 Добро пожаловать!\n\n"
-        "Для доступа к панели обратитесь к администратору.\n"
-        f"Бот: @{BOT_USERNAME}",
+        "Для доступа к панели обратитесь к администратору.",
         parse_mode="HTML",
     )

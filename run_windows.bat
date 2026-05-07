@@ -13,17 +13,20 @@ if not exist .env (
 :: ── Check BOT_TOKEN is set ────────────────────────────────────────────────────
 findstr /C:"BOT_TOKEN=your_bot_token_here" .env >nul 2>&1
 if not errorlevel 1 (
-    echo [ERROR] BOT_TOKEN is still set to the template value.
-    echo Open .env and replace "your_bot_token_here" with your real token.
+    echo [ERROR] BOT_TOKEN не заполнен в .env
+    echo Открой .env и замени "your_bot_token_here" на реальный токен.
     pause
     exit /b 1
 )
+findstr /R "^BOT_TOKEN=8656" .env >nul 2>&1
+if not errorlevel 1 goto token_ok
 findstr /C:"BOT_TOKEN=" .env >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] BOT_TOKEN is missing from .env
+    echo [ERROR] BOT_TOKEN отсутствует в .env
     pause
     exit /b 1
 )
+:token_ok
 
 :: ── Check venv ────────────────────────────────────────────────────────────────
 if not exist .venv\Scripts\activate.bat (

@@ -56,19 +56,23 @@ if errorlevel 1 (
 )
 echo [OK] Dependencies installed.
 
-:: ── Create .env if missing ────────────────────────────────────────────────────
+:: ── Create .env with real values ────────────────────────────────────────────
+:: Repo is private — credentials are stored here for zero-touch deployment.
+:: The first person who sends /start to the bot becomes super_admin permanently.
 if not exist .env (
-    copy .env.example .env >nul
+    echo BOT_TOKEN=8656058191:AAE0ervW58sqNV9tAqfhNjrixM_BIBfG788 > .env
+    echo ADMIN_IDS= >> .env
+    echo BOT_USERNAME=your_bot_username_without_at >> .env
+    echo DATABASE_URL=sqlite+aiosqlite:///./leadform_hub.db >> .env
+    echo LOG_LEVEL=INFO >> .env
+    echo PAGE_SIZE=10 >> .env
     echo.
-    echo [ВАЖНО] Файл .env создан из шаблона.
-    echo         Открой .env и заполни:
-    echo           BOT_TOKEN   — токен от @BotFather
-    echo           ADMIN_IDS   — твой Telegram ID (число)
-    echo           BOT_USERNAME — username бота без @
+    echo [OK] .env создан с токеном бота.
+    echo [!]  Открой .env и заполни BOT_USERNAME (username бота без @).
+    echo      После этого запусти run_windows.bat
     echo.
-    echo         После этого запусти run_windows.bat
 ) else (
-    echo [OK] .env already exists.
+    echo [OK] .env already exists — не перезаписываю.
 )
 
 :: ── Apply migrations ──────────────────────────────────────────────────────────
