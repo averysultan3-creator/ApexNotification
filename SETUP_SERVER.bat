@@ -4,9 +4,146 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ============================================================
-echo   ApexNotification — SETUP SERVER (одна кнопка)
+echo   ApexNotification — SETUP + START (одна кнопка)
 echo ============================================================
 echo.
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 1. ПРОВЕРКИ
+:: ════════════════════════════════════════════════════════════════════════════
+
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Python не найден!
+    echo.
+    echo   Установи Python 3.10+ c https://python.org
+    echo   При установке поставь галку "Add Python to PATH"
+    echo.
+    pause & exit /b 1
+)
+for /f "tokens=*" %%i in ('python --version 2^>^&1') do echo [OK] %%i
+
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Git не найден!
+    echo   Установи Git c https://git-scm.com/download/win
+    pause & exit /b 1
+)
+echo [OK] Git найден.
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 2. СКАЧАТЬ / ОБНОВИТЬ ПРОЕКТ
+:: ════════════════════════════════════════════════════════════════════════════
+
+set "DEPLOY_DIR=%~dp0"
+if "%DEPLOY_DIR:~-1%"=="\" set "DEPLOY_DIR=%DEPLOY_DIR:~0,-1%"
+set "PROJECT_DIR=%DEPLOY_DIR%\ApexNotification"
+
+if exist "%PROJECT_DIR%\main.py" (
+    echo [..] Проект уже есть — делаю git pull ...
+    cd /d "%PROJECT_DIR%"
+    git pull >nul 2>&1
+    echo [OK] Репозиторий обновлён.
+    goto :SETUP_VENV
+)
+
+echo [..] Клонирую репозиторий...
+git clone https://github.com/averysultan3-creator/ApexNotification.git "%PROJECT_DIR%" 2>&1
+
+if not exist "%PROJECT_DIR%\main.py" (
+    echo.
+    echo [ERROR] Клонирование не удалось!
+    echo   Репозиторий приватный. Войди в GitHub:
+    echo   При запросе логина/пароля вводи свои данные GitHub.
+    echo   Или используй Personal Access Token как пароль:
+    echo   https://github.com/settings/tokens
+    echo.
+    pause & exit /b 1
+)
+echo [OK] Репозиторий склонирован.
+
+:SETUP_VENV
+cd /d "%PROJECT_DIR%"
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 3. ВИРТУАЛЬНОЕ ОКРУЖЕНИЕ
+:: ════════════════════════════════════════════════════════════════════════════
+
+if exist ".venv\Scripts\python.exe" (
+    echo [OK] .venv уже есть.
+) else (
+    echo [..] Создаю .venv...
+    python -m venv .venv
+    if not exist ".venv\Scripts\python.exe" (
+        echo [ERROR] Не удалось создать .venv
+        pause & exit /b 1
+    )
+    echo [OK] .venv создано.
+)
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 4. ЗАВИСИМОСТИ
+:: ════════════════════════════════════════════════════════════════════════════
+
+echo [..] Обновляю pip...
+.venv\Scripts\python.exe -m pip install --upgrade pip -q
+
+echo [..] Устанавливаю зависимости (займёт ~30 сек)...
+.venv\Scripts\pip.exe install -r requirements.txt -q
+if not exist ".venv\Lib\site-packages\aiogram" (
+    echo [ERROR] aiogram не установился. Проверь интернет.
+    pause & exit /b 1
+)
+echo [OK] Зависимости установлены.
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 5. .env
+:: ════════════════════════════════════════════════════════════════════════════
+
+if not exist ".env" (
+    echo [..] Создаю .env...
+    (
+        echo BOT_TOKEN=8656058191:AAE0ervW58sqNV9tAqfhNjrixM_BIBfG788
+        echo ADMIN_IDS=
+        echo BOT_USERNAME=apexnotification_bot
+        echo DATABASE_URL=sqlite+aiosqlite:///./leadform_hub.db
+        echo LOG_LEVEL=INFO
+        echo PAGE_SIZE=10
+    ) > .env
+    echo [OK] .env создан.
+) else (
+    echo [OK] .env уже есть.
+)
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 6. МИГРАЦИИ
+:: ════════════════════════════════════════════════════════════════════════════
+
+echo [..] Применяю миграции БД...
+.venv\Scripts\python.exe -m alembic upgrade head >nul 2>&1
+echo [OK] База данных готова.
+
+:: ════════════════════════════════════════════════════════════════════════════
+:: 7. ЗАПУСК БОТА
+:: ════════════════════════════════════════════════════════════════════════════
+
+echo.
+echo ============================================================
+echo   ВСЁ ГОТОВО! Запускаю бота...
+echo ============================================================
+echo.
+echo   Первый кто напишет /start боту — станет super_admin.
+echo   Чтобы остановить бота: нажми Ctrl+C
+echo.
+
+call .venv\Scripts\activate.bat
+python main.py
+
+:: Если бот упал — показать ошибку
+echo.
+echo [!] Бот остановился. Если это ошибка — проверь вывод выше.
+pause
+
 
 :: ════════════════════════════════════════════════════════════════════════════
 :: 1. ПРОВЕРКИ
