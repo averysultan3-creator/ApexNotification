@@ -5,8 +5,9 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, LOG_LEVEL, DATABASE_URL, ADMIN_IDS
 from database import init_db
@@ -56,7 +57,7 @@ async def main() -> None:
         logger.critical("Failed to initialise database: %s", exc, exc_info=True)
         raise
 
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
 
     # ── Global middleware ─────────────────────────────────────────────────────
