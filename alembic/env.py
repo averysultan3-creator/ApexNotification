@@ -9,7 +9,7 @@ from alembic import context
 
 # Load project config
 from config import DATABASE_URL
-import models  # noqa: F401 – registers all models
+import app.models  # noqa: F401 – registers all models
 from database import Base
 
 # Alembic Config object
