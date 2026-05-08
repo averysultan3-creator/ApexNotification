@@ -1,29 +1,41 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
-def facebook_forms_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить FB форму", callback_data="fbforms:add")],
-            [InlineKeyboardButton(text="📋 Список форм", callback_data="fbforms:list")],
-            [InlineKeyboardButton(text="🔗 Webhook инструкция", callback_data="fbforms:webhook")],
-            [InlineKeyboardButton(text="🧪 Тестовый лид", callback_data="fbforms:test")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="main:menu")],
-        ]
-    )
+def forms_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить форму", callback_data="forms:add")],
+        [InlineKeyboardButton(text="📋 Список форм", callback_data="forms:list")],
+        [InlineKeyboardButton(text="🧪 Тест", callback_data="forms:test")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="main:menu")],
+    ])
 
 
-def facebook_form_card_kb(form_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔀 Куда отправлять", callback_data=f"rules:create_for_form:{form_id}")],
-            [InlineKeyboardButton(text="🧪 Тестовый лид", callback_data=f"fbforms:test:{form_id}")],
-            [InlineKeyboardButton(text="📥 Лиды формы", callback_data=f"leads:form:{form_id}")],
-            [InlineKeyboardButton(text="📊 Статистика", callback_data=f"fbforms:stats:{form_id}")],
-            [
-                InlineKeyboardButton(text="✏️ Изменить", callback_data=f"fbforms:edit:{form_id}"),
-                InlineKeyboardButton(text="⏸ Выключить", callback_data=f"fbforms:toggle:{form_id}"),
-            ],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="fbforms:menu")],
-        ]
-    )
+def form_card_kb(form_id: int, is_active: bool = True) -> InlineKeyboardMarkup:
+    toggle_label = "⏸ Выкл" if is_active else "▶️ Вкл"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧪 Тест лид", callback_data=f"forms:test_lead:{form_id}")],
+        [InlineKeyboardButton(text="📥 Лиды формы", callback_data=f"forms:leads:{form_id}")],
+        [InlineKeyboardButton(text=toggle_label, callback_data=f"forms:toggle:{form_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="forms:list")],
+    ])
+
+
+def forms_list_kb(forms: list) -> InlineKeyboardMarkup:
+    buttons = []
+    for form in forms:
+        status = "✅" if form.status == "active" else "⏸"
+        buttons.append([InlineKeyboardButton(
+            text=f"{status} {form.name}", callback_data=f"forms:card:{form.id}"
+        )])
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="forms:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def clients_select_kb(clients: list) -> InlineKeyboardMarkup:
+    buttons = []
+    for client in clients:
+        buttons.append([InlineKeyboardButton(
+            text=client.name, callback_data=f"forms:select_client:{client.id}"
+        )])
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="forms:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

@@ -4,9 +4,13 @@ import sys
 
 import uvicorn
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+
+try:
+    from aiogram.client.default import DefaultBotProperties
+except ImportError:  # aiogram 3.0 compatibility in older server envs
+    DefaultBotProperties = None
 
 from app.bot.handlers import routers
 from app.bot.middleware import AdminOnlyMiddleware, DatabaseMiddleware
@@ -20,6 +24,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def create_bot() -> Bot:
+    if DefaultBotProperties is None:
+        return Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+    return Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
 
 def create_dispatcher() -> Dispatcher:
@@ -37,7 +47,7 @@ async def run_bot() -> None:
 
     logger.info("Apex Lead Router bot starting. DB: %s", DATABASE_URL)
     await init_db()
-    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = create_bot()
     dp = create_dispatcher()
     try:
         await dp.start_polling(bot, drop_pending_updates=True)
@@ -60,7 +70,7 @@ async def run_all() -> None:
 
     logger.info("Apex Lead Router starting in all mode. DB: %s", DATABASE_URL)
     await init_db()
-    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = create_bot()
     dp = create_dispatcher()
     app = create_app(bot=bot)
     server = uvicorn.Server(uvicorn.Config(app, host=WEB_HOST, port=WEB_PORT, log_level=LOG_LEVEL.lower()))

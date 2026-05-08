@@ -1,13 +1,14 @@
 from aiogram.fsm.state import State, StatesGroup
 
 
-class ClientCreate(StatesGroup):
+class AddClientFSM(StatesGroup):
     name = State()
 
 
-class ClientAddTelegram(StatesGroup):
+class AddTelegramIdFSM(StatesGroup):
     telegram_id = State()
 
 
-class ClientAddEmail(StatesGroup):
-    email = State()
+class SetSheetFSM(StatesGroup):
+    sheet_id = State()
+    sheet_name = State()

@@ -1,20 +1,22 @@
 from __future__ import annotations
-
+import json
+import logging
 from typing import Any
-
 import httpx
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.lead import SourceType
 from app.services.delivery_service import deliver_lead
-from app.services.facebook_form_service import get_facebook_form_by_fb_form_id
+from app.services.facebook_form_service import get_form_by_fb_form_id
 from app.services.lead_service import create_lead, get_lead_by_fb_lead_id
 from app.utils.facebook import LEADGEN_FIELD, graph_lead_url
 from config import FACEBOOK_GRAPH_VERSION, FACEBOOK_PAGE_ACCESS_TOKEN, FACEBOOK_VERIFY_TOKEN
 
+logger = logging.getLogger(__name__)
 
-def verify_facebook_webhook(mode: str | None, verify_token: str | None, challenge: str | None) -> str | None:
+
+def verify_facebook_webhook(
+    mode: str | None, verify_token: str | None, challenge: str | None
+) -> str | None:
     if mode == "subscribe" and verify_token == FACEBOOK_VERIFY_TOKEN and challenge is not None:
         return challenge
     return None
@@ -32,27 +34,27 @@ def parse_facebook_webhook_payload(payload: dict[str, Any]) -> list[dict[str, st
             form_id = value.get("form_id")
             page_id = value.get("page_id") or entry_page_id
             if leadgen_id and form_id:
-                events.append(
-                    {
-                        "leadgen_id": str(leadgen_id),
-                        "form_id": str(form_id),
-                        "page_id": str(page_id),
-                    }
-                )
+                events.append({
+                    "leadgen_id": str(leadgen_id),
+                    "form_id": str(form_id),
+                    "page_id": str(page_id),
+                })
     return events
 
 
 async def fetch_lead_details(leadgen_id: str) -> dict[str, Any]:
     if not FACEBOOK_PAGE_ACCESS_TOKEN:
         raise RuntimeError("FACEBOOK_PAGE_ACCESS_TOKEN is not configured.")
-    params = {
-        "fields": "field_data,created_time,ad_id,form_id",
-        "access_token": FACEBOOK_PAGE_ACCESS_TOKEN,
-    }
     async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(graph_lead_url(FACEBOOK_GRAPH_VERSION, leadgen_id), params=params)
-        response.raise_for_status()
-        return response.json()
+        r = await client.get(
+            graph_lead_url(FACEBOOK_GRAPH_VERSION, leadgen_id),
+            params={
+                "fields": "field_data,created_time,form_id",
+                "access_token": FACEBOOK_PAGE_ACCESS_TOKEN,
+            },
+        )
+        r.raise_for_status()
+        return r.json()
 
 
 def normalize_lead_data(raw: dict[str, Any]) -> dict[str, Any]:
@@ -65,70 +67,62 @@ def normalize_lead_data(raw: dict[str, Any]) -> dict[str, Any]:
             fields[name] = value
 
     def first(*names: str) -> str | None:
-        for name in names:
-            value = fields.get(name)
-            if value:
-                return str(value)
+        for n in names:
+            v = fields.get(n)
+            if v:
+                return str(v)
         return None
 
-    full_name = first("full_name", "name", "first_name", "your_name", "имя")
-    if not full_name:
-        first_name = first("first_name")
-        last_name = first("last_name")
-        full_name = " ".join(part for part in [first_name, last_name] if part) or None
-
+    full_name = first("full_name", "name", "your_name") or (
+        " ".join(p for p in [first("first_name"), first("last_name")] if p) or None
+    )
     return {
         "full_name": full_name,
-        "phone": first("phone_number", "phone", "mobile", "номер_телефона", "телефон"),
-        "email": first("email", "e-mail"),
-        "telegram": first("telegram", "telegram_username", "tg"),
-        "fields": fields,
+        "phone": first("phone_number", "phone", "телефон", "mobile"),
+        "email": first("email", "email_address", "почта"),
     }
 
 
-async def create_lead_from_facebook(
-    session: AsyncSession,
-    event: dict[str, str],
-    *,
-    raw_details: dict[str, Any] | None = None,
-) -> Any | None:
-    existing = await get_lead_by_fb_lead_id(session, event["leadgen_id"])
-    if existing:
-        return existing
+async def process_facebook_lead(
+    session: AsyncSession, payload: dict[str, Any], *, bot: Bot | None = None
+) -> list[Any]:
+    events = parse_facebook_webhook_payload(payload)
+    leads = []
+    for event in events:
+        try:
+            lead = await _process_one(session, event, bot=bot)
+            if lead:
+                leads.append(lead)
+        except Exception as e:
+            logger.error("Error processing lead %s: %s", event, e)
+    return leads
 
-    form = await get_facebook_form_by_fb_form_id(session, event["form_id"])
-    if not form:
+
+async def _process_one(session: AsyncSession, event: dict[str, str], *, bot: Bot | None = None):
+    leadgen_id = event["leadgen_id"]
+    fb_form_id = event["form_id"]
+
+    if await get_lead_by_fb_lead_id(session, leadgen_id):
         return None
 
-    raw = raw_details if raw_details is not None else await fetch_lead_details(event["leadgen_id"])
-    normalized = normalize_lead_data(raw)
-    return await create_lead(
+    form = await get_form_by_fb_form_id(session, fb_form_id)
+
+    try:
+        raw = await fetch_lead_details(leadgen_id)
+    except Exception as e:
+        logger.error("Fetch lead %s failed: %s", leadgen_id, e)
+        raw = {}
+
+    norm = normalize_lead_data(raw)
+    lead = await create_lead(
         session,
-        source_type=SourceType.facebook_lead_form.value,
-        fb_lead_id=event["leadgen_id"],
-        fb_page_id=event.get("page_id"),
-        fb_form_id=event.get("form_id"),
-        client_id=form.client_id,
-        form_id=form.id,
-        raw_data=raw,
-        normalized_data=normalized,
-        full_name=normalized.get("full_name"),
-        phone=normalized.get("phone"),
-        email=normalized.get("email"),
-        telegram=normalized.get("telegram"),
+        client_id=form.client_id if form else None,
+        facebook_form_id=form.id if form else None,
+        fb_lead_id=leadgen_id,
+        full_name=norm.get("full_name"),
+        phone=norm.get("phone"),
+        email=norm.get("email"),
+        raw_data_json=json.dumps(raw, ensure_ascii=False),
     )
-
-
-async def process_facebook_lead(
-    session: AsyncSession,
-    payload: dict[str, Any],
-    *,
-    bot: Bot | None = None,
-) -> list[Any]:
-    processed = []
-    for event in parse_facebook_webhook_payload(payload):
-        lead = await create_lead_from_facebook(session, event)
-        if lead:
-            await deliver_lead(session, lead.id, bot=bot)
-            processed.append(lead)
-    return processed
+    await deliver_lead(session, bot, lead)
+    return lead

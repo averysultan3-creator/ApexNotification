@@ -1,60 +1,64 @@
 from aiogram import Router
-from aiogram.types import CallbackQuery
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.bot.keyboards.stats_kb import settings_kb
-from app.utils.formatters import tracking_code_text, webhook_settings_text
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from config import FACEBOOK_VERIFY_TOKEN, PUBLIC_BASE_URL
 
 router = Router(name="settings")
 
 
+def _settings_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔗 Webhook URL", callback_data="settings:webhook")],
+        [InlineKeyboardButton(text="🔑 Verify Token", callback_data="settings:verify_token")],
+        [InlineKeyboardButton(text="📎 Tracking example", callback_data="settings:tracking")],
+        [InlineKeyboardButton(text="❤️ Health check", callback_data="settings:health")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="main:menu")],
+    ])
+
+
 @router.callback_query(lambda c: c.data == "settings:menu")
 async def settings_menu(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(webhook_settings_text(), reply_markup=settings_kb())
+    await callback.message.edit_text("⚙️ <b>Настройки</b>", reply_markup=_settings_kb())
     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == "settings:webhook")
 async def settings_webhook(callback: CallbackQuery) -> None:
+    url = f"{PUBLIC_BASE_URL}/webhooks/facebook"
     await callback.message.edit_text(
-        "🔗 <b>Webhook данные</b>\n\n"
-        "Callback URL:\n"
-        f"{PUBLIC_BASE_URL}/webhooks/facebook\n\n"
-        "Verify Token:\n"
-        f"{FACEBOOK_VERIFY_TOKEN}",
-        reply_markup=settings_kb(),
+        f"🔗 <b>Facebook Webhook URL</b>\n\n<code>{url}</code>\n\n"
+        "Meta Developer Console → Webhooks → Callback URL",
+        reply_markup=_settings_kb(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "settings:verify_token")
+async def settings_verify_token(callback: CallbackQuery) -> None:
+    await callback.message.edit_text(
+        f"🔑 <b>Verify Token</b>\n\n<code>{FACEBOOK_VERIFY_TOKEN}</code>\n\n"
+        "Meta Developer Console → Webhooks → Verify Token",
+        reply_markup=_settings_kb(),
     )
     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == "settings:tracking")
 async def settings_tracking(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(tracking_code_text("SLUG"), reply_markup=settings_kb())
+    ex = (
+        f'&lt;script src="{PUBLIC_BASE_URL}/track/pixel.js?pl=YOUR_SLUG"&gt;&lt;/script&gt;\n\n'
+        '&lt;a href="..." data-track-click="main_cta"&gt;Оставить заявку&lt;/a&gt;'
+    )
+    await callback.message.edit_text(
+        f"📎 <b>Tracking code</b>\n\n<pre>{ex}</pre>",
+        reply_markup=_settings_kb(),
+    )
     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == "settings:health")
 async def settings_health(callback: CallbackQuery) -> None:
-    await callback.answer("Health: /health returns {\"status\":\"ok\"}", show_alert=True)
-
-
-@router.callback_query(lambda c: c.data == "settings:guide")
-async def settings_guide(callback: CallbackQuery) -> None:
-    text = (
-        "📖 <b>Инструкция подключения</b>\n\n"
-        "Facebook:\n"
-        "1. Meta App → Webhooks.\n"
-        "2. Object: Page.\n"
-        f"3. Callback URL: {PUBLIC_BASE_URL}/webhooks/facebook\n"
-        f"4. Verify Token: {FACEBOOK_VERIFY_TOKEN}\n"
-        "5. Subscribe: leadgen.\n"
-        "6. Добавь Page Access Token в .env.\n"
-        "7. В боте добавь FB Page ID и FB Form ID.\n\n"
-        "Preland:\n"
-        "1. Вставь tracking script перед </body>.\n"
-        "2. На CTA добавь data-track-click=\"main_cta\".\n"
-        "3. Открой страницу и проверь visits/clicks/CTR."
+    await callback.message.edit_text(
+        f"❤️ <b>Health</b>\n\n<code>GET {PUBLIC_BASE_URL}/health</code>",
+        reply_markup=_settings_kb(),
     )
-    await callback.message.edit_text(text, reply_markup=settings_kb())
     await callback.answer()

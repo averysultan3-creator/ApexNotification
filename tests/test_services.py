@@ -1,172 +1,101 @@
-"""Tests for service layer."""
 import pytest
 
-from services.client_service import (
-    create_client, get_client_by_id, toggle_client_status,
-    delete_client, get_clients_paginated,
-)
-from services.offer_service import create_offer, get_offer_by_id
-from services.form_service import create_form, get_form_by_id
-from services.referral_service import create_referral, get_ref_by_code
-from services.question_service import create_question, get_questions_by_form
-from services.lead_service import create_lead, check_duplicate_lead, update_lead_status
-
+from app.models.lead import SourceType
+from app.services.client_service import create_client
+from app.services.delivery_service import create_delivery_rule, get_delivery_rule
+from app.services.facebook_form_service import create_facebook_form, get_facebook_form_by_fb_form_id
+from app.services.facebook_lead_service import create_lead_from_facebook, normalize_lead_data
+from app.services.lead_service import get_lead_by_fb_lead_id
 
 pytestmark = pytest.mark.asyncio
 
 
-# ── Client service ────────────────────────────────────────────────────────────
-
-async def test_create_and_get_client(session):
-    client = await create_client(session, name="Test Client", telegram_username="testuser")
-    assert client.id is not None
-    assert client.name == "Test Client"
-    assert client.telegram_username == "testuser"
-    assert client.status == "active"
-
-    fetched = await get_client_by_id(session, client.id)
-    assert fetched is not None
-    assert fetched.name == "Test Client"
-
-
-async def test_toggle_client_status(session):
-    client = await create_client(session, name="Toggle Test")
-    assert client.status == "active"
-    toggled = await toggle_client_status(session, client.id)
-    assert toggled.status == "inactive"
-    toggled2 = await toggle_client_status(session, client.id)
-    assert toggled2.status == "active"
-
-
-async def test_delete_client(session):
-    client = await create_client(session, name="Delete Me")
-    cid = client.id
-    result = await delete_client(session, cid)
-    assert result is True
-    assert await get_client_by_id(session, cid) is None
-
-
-async def test_clients_pagination(session):
-    for i in range(5):
-        await create_client(session, name=f"Paginated Client {i}")
-    items, total = await get_clients_paginated(session, page=0, page_size=3)
-    assert len(items) <= 3
-    assert total >= 5
-
-
-# ── Offer service ─────────────────────────────────────────────────────────────
-
-async def test_create_offer(session):
-    client = await create_client(session, name="Client for Offer")
-    offer = await create_offer(session, client_id=client.id, name="Test Offer", geo="UA")
-    assert offer.id is not None
-    assert offer.client_id == client.id
-    assert offer.geo == "UA"
-
-
-# ── Form service ──────────────────────────────────────────────────────────────
-
-async def test_create_form(session):
-    client = await create_client(session, name="Form Client")
-    offer = await create_offer(session, client_id=client.id, name="Form Offer")
-    form = await create_form(
+async def test_create_lead_from_facebook(session):
+    client = await create_client(session, "Client A")
+    form = await create_facebook_form(
         session,
+        name="Work UA Form",
+        fb_page_id="123456789",
+        fb_form_id="987654321",
         client_id=client.id,
-        offer_id=offer.id,
-        name="Test Form",
-        language="ru",
-        welcome_text="Hello!",
+        offer_name="Remote Work",
     )
-    assert form.id is not None
-    assert form.slug  # auto-generated
-    assert form.status == "active"
 
-
-async def test_form_slug_uniqueness(session):
-    client = await create_client(session, name="Slug Client")
-    offer = await create_offer(session, client_id=client.id, name="Slug Offer")
-    form1 = await create_form(session, client_id=client.id, offer_id=offer.id, name="My Form")
-    form2 = await create_form(session, client_id=client.id, offer_id=offer.id, name="My Form")
-    assert form1.slug != form2.slug
-
-
-# ── Referral service ──────────────────────────────────────────────────────────
-
-async def test_create_referral(session):
-    client = await create_client(session, name="Ref Client")
-    offer = await create_offer(session, client_id=client.id, name="Ref Offer")
-    form = await create_form(session, client_id=client.id, offer_id=offer.id, name="Ref Form")
-    ref = await create_referral(session, form_id=form.id, name="Facebook Ads", source_type="facebook")
-    assert ref.code  # auto-generated 8-char code
-    assert len(ref.code) == 8
-    fetched = await get_ref_by_code(session, ref.code)
-    assert fetched is not None
-    assert fetched.id == ref.id
-
-
-# ── Question service ──────────────────────────────────────────────────────────
-
-async def test_create_questions_ordering(session):
-    client = await create_client(session, name="Q Client")
-    offer = await create_offer(session, client_id=client.id, name="Q Offer")
-    form = await create_form(session, client_id=client.id, offer_id=offer.id, name="Q Form")
-    q1 = await create_question(session, form.id, "What is your name?", "text")
-    q2 = await create_question(session, form.id, "What is your phone?", "phone")
-    q3 = await create_question(session, form.id, "Any comments?", "comment", is_required=False)
-    questions = await get_questions_by_form(session, form.id)
-    assert len(questions) == 3
-    assert questions[0].position < questions[1].position < questions[2].position
-
-
-# ── Lead service ──────────────────────────────────────────────────────────────
-
-async def test_create_lead(session):
-    client = await create_client(session, name="Lead Client")
-    offer = await create_offer(session, client_id=client.id, name="Lead Offer")
-    form = await create_form(session, client_id=client.id, offer_id=offer.id, name="Lead Form")
-    ref = await create_referral(session, form_id=form.id, name="TG source")
-
-    lead = await create_lead(
+    raw = {
+        "id": "lead_1",
+        "field_data": [
+            {"name": "full_name", "values": ["Ivan"]},
+            {"name": "phone_number", "values": ["+48000000000"]},
+            {"name": "email", "values": ["test@example.com"]},
+        ],
+    }
+    lead = await create_lead_from_facebook(
         session,
-        form_id=form.id,
-        client_id=client.id,
-        offer_id=offer.id,
-        referral_source_id=ref.id,
-        telegram_user_id=999999,
-        telegram_username="testlead",
-        first_name="Ivan",
-        last_name="Ivanov",
-        answers={"Name?": "Ivan Ivanov", "Phone?": "+380971234567"},
+        {"leadgen_id": "lead_1", "form_id": "987654321", "page_id": "123456789"},
+        raw_details=raw,
     )
+
     assert lead.id is not None
-    assert lead.status == "new"
+    assert lead.form_id == form.id
+    assert lead.client_id == client.id
+    assert lead.full_name == "Ivan"
+    assert lead.phone == "+48000000000"
+    assert lead.email == "test@example.com"
+
+    fetched = await get_lead_by_fb_lead_id(session, "lead_1")
+    assert fetched.id == lead.id
 
 
-async def test_duplicate_lead_detection(session):
-    client = await create_client(session, name="Dup Client")
-    offer = await create_offer(session, client_id=client.id, name="Dup Offer")
-    form = await create_form(session, client_id=client.id, offer_id=offer.id, name="Dup Form")
-    await create_lead(
+async def test_delivery_rule_lookup(session):
+    client = await create_client(session, "Client B")
+    form = await create_facebook_form(
         session,
-        form_id=form.id, client_id=client.id, offer_id=offer.id,
-        referral_source_id=None, telegram_user_id=12345,
-        telegram_username=None, first_name=None, last_name=None, answers={},
+        name="PL Form",
+        fb_page_id="page",
+        fb_form_id="form",
+        client_id=client.id,
     )
-    is_dup = await check_duplicate_lead(session, form.id, 12345)
-    assert is_dup is True
-    not_dup = await check_duplicate_lead(session, form.id, 99999)
-    assert not_dup is False
-
-
-async def test_update_lead_status(session):
-    client = await create_client(session, name="Status Client")
-    offer = await create_offer(session, client_id=client.id, name="Status Offer")
-    form = await create_form(session, client_id=client.id, offer_id=offer.id, name="Status Form")
-    lead = await create_lead(
+    rule = await create_delivery_rule(
         session,
-        form_id=form.id, client_id=client.id, offer_id=offer.id,
-        referral_source_id=None, telegram_user_id=77777,
-        telegram_username=None, first_name=None, last_name=None, answers={},
+        source_type=SourceType.facebook_lead_form.value,
+        source_id=form.id,
+        client_id=client.id,
+        send_to_admin=True,
+        telegram_ids=[123456],
+        emails=["client@example.com"],
     )
-    updated = await update_lead_status(session, lead.id, "approved")
-    assert updated.status == "approved"
+
+    fetched = await get_delivery_rule(session, SourceType.facebook_lead_form.value, form.id)
+    assert fetched.id == rule.id
+    assert fetched.client_id == client.id
+
+
+async def test_facebook_form_lookup_by_fb_form_id(session):
+    client = await create_client(session, "Client C")
+    await create_facebook_form(
+        session,
+        name="Lookup Form",
+        fb_page_id="page-1",
+        fb_form_id="form-1",
+        client_id=client.id,
+    )
+
+    fetched = await get_facebook_form_by_fb_form_id(session, "form-1")
+    assert fetched is not None
+    assert fetched.name == "Lookup Form"
+
+
+async def test_normalize_lead_data():
+    normalized = normalize_lead_data(
+        {
+            "field_data": [
+                {"name": "name", "values": ["Anna"]},
+                {"name": "phone", "values": ["+380971234567"]},
+                {"name": "email", "values": ["anna@example.com"]},
+            ]
+        }
+    )
+
+    assert normalized["full_name"] == "Anna"
+    assert normalized["phone"] == "+380971234567"
+    assert normalized["email"] == "anna@example.com"
