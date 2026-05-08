@@ -1,3 +1,5 @@
+import json as _json
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +10,19 @@ from app.services.preland_tracking_service import (
     track_page_view,
 )
 from database import get_session
+
+
+async def _parse_body(request: Request) -> dict:
+    """Parse JSON body regardless of Content-Type (sendBeacon sends text/plain)."""
+    try:
+        return await request.json()
+    except Exception:
+        pass
+    try:
+        raw = await request.body()
+        return _json.loads(raw)
+    except Exception:
+        return {}
 
 router = APIRouter(prefix="/track", tags=["preland-tracking"])
 
@@ -26,7 +41,7 @@ async def page_view(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, bool | str]:
-    data = await request.json()
+    data = await _parse_body(request)
     slug = data.get("preland_slug")
     if not slug:
         return {"ok": False, "error": "preland_slug_required"}
@@ -45,7 +60,7 @@ async def button_click(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, bool | str]:
-    data = await request.json()
+    data = await _parse_body(request)
     slug = data.get("preland_slug")
     button_id = data.get("button_id")
     if not slug:
