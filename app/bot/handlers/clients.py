@@ -3,13 +3,14 @@ from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.bot.keyboards.clients_kb import client_card_kb, clients_list_kb, clients_menu_kb
+from app.bot.keyboards.clients_kb import client_card_kb, client_reflink_kb, clients_list_kb, clients_menu_kb
 from app.bot.keyboards.leads_kb import leads_list_kb
-from app.bot.states.client_states import AddClientFSM, AddTelegramIdFSM, SetSheetFSM
+from app.bot.states.client_states import AddClientFSM, SetSheetFSM
 from app.services.client_service import (
-    add_telegram_id, create_client, get_client_by_id, list_clients, set_google_sheet
+    add_telegram_id, create_client, get_client_by_id, list_clients, set_google_sheet, remove_telegram_id
 )
 from app.utils.formatters import load_json_list
+from config import BOT_USERNAME
 
 router = Router(name="clients")
 
@@ -74,33 +75,25 @@ async def client_card(callback: CallbackQuery, session: AsyncSession) -> None:
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("clients:add_tid:"))
-async def clients_add_tid_start(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(lambda c: c.data.startswith("clients:reflink:"))
+async def clients_reflink(callback: CallbackQuery, session: AsyncSession) -> None:
     client_id = int(callback.data.split(":")[2])
-    await state.set_state(AddTelegramIdFSM.telegram_id)
-    await state.update_data(client_id=client_id)
-    await callback.message.edit_text("Введи Telegram ID (число, например 123456789):")
-    await callback.answer()
-
-
-@router.message(AddTelegramIdFSM.telegram_id)
-async def clients_add_tid(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    data = await state.get_data()
-    tid = message.text.strip()
-    if not tid.lstrip("-").isdigit():
-        await message.answer("❌ Неверный формат. Введи числовой ID:")
-        return
-    client = await get_client_by_id(session, data["client_id"])
+    client = await get_client_by_id(session, client_id)
     if not client:
-        await state.clear()
-        await message.answer("Клиент не найден.")
+        await callback.answer("Клиент не найден.", show_alert=True)
         return
-    await add_telegram_id(session, client, tid)
-    await state.clear()
-    await message.answer(
-        f"✅ Telegram ID {tid} добавлен для <b>{client.name}</b>.",
-        reply_markup=client_card_kb(client.id),
+    link = f"https://t.me/{BOT_USERNAME}?start=reg_{client_id}"
+    tg_ids = load_json_list(client.telegram_ids_json)
+    ids_text = "\n".join(f"• <code>{tid}</code>" for tid in tg_ids) if tg_ids else "  —"
+    await callback.message.edit_text(
+        f"🔗 <b>Реф-ссылка для {client.name}</b>\n\n"
+        f"Отправь эту ссылку получателю уведомлений.\n"
+        f"Когда он перейдёт и нажмёт Start — его ID добавится автоматически.\n\n"
+        f"<code>{link}</code>\n\n"
+        f"Текущие получатели:\n{ids_text}",
+        reply_markup=client_reflink_kb(client_id, tg_ids),
     )
+    await callback.answer()
 
 
 @router.callback_query(lambda c: c.data.startswith("clients:set_sheet:"))
@@ -157,3 +150,27 @@ async def client_leads(callback: CallbackQuery, session: AsyncSession) -> None:
         reply_markup=leads_list_kb(leads, back_cb=f"clients:card:{client_id}"),
     )
     await callback.answer()
+
+
+@router.callback_query(lambda c: c.data.startswith("clients:del_tid:"))
+async def clients_del_tid(callback: CallbackQuery, session: AsyncSession) -> None:
+    parts = callback.data.split(":")
+    client_id = int(parts[2])
+    tid = parts[3]
+    client = await get_client_by_id(session, client_id)
+    if not client:
+        await callback.answer("Клиент не найден.", show_alert=True)
+        return
+    await remove_telegram_id(session, client, tid)
+    tg_ids = load_json_list(client.telegram_ids_json)
+    link = f"https://t.me/{BOT_USERNAME}?start=reg_{client_id}"
+    ids_text = "\n".join(f"• <code>{t}</code>" for t in tg_ids) if tg_ids else "  —"
+    await callback.message.edit_text(
+        f"🔗 <b>Реф-ссылка для {client.name}</b>\n\n"
+        f"Отправь эту ссылку получателю уведомлений.\n"
+        f"Когда он перейдёт и нажмёт Start — его ID добавится автоматически.\n\n"
+        f"<code>{link}</code>\n\n"
+        f"Текущие получатели:\n{ids_text}",
+        reply_markup=client_reflink_kb(client_id, tg_ids),
+    )
+    await callback.answer(f"✅ {tid} удалён.")
