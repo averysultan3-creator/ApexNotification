@@ -14,6 +14,7 @@ async def create_lead(
     full_name: str | None = None,
     phone: str | None = None,
     email: str | None = None,
+    tag: str | None = None,
     raw_data_json: str | None = None,
 ) -> Lead:
     lead = Lead(
@@ -23,6 +24,7 @@ async def create_lead(
         full_name=full_name,
         phone=phone,
         email=email,
+        tag=tag,
         raw_data_json=raw_data_json,
     )
     session.add(lead)

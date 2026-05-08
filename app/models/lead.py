@@ -20,6 +20,7 @@ class Lead(Base):
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_data_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivered_telegram: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     delivered_sheet: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

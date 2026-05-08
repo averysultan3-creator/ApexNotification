@@ -46,6 +46,7 @@ def format_dashboard(data: dict[str, Any]) -> str:
 
 
 def format_lead_card(lead: Any) -> str:
+    """Полная карточка лида для администратора."""
     form_name = ""
     client_name = ""
     try:
@@ -67,7 +68,8 @@ def format_lead_card(lead: Any) -> str:
         f"Дата: {fmt_dt(lead.created_at)}\n\n"
         f"Имя: {lead.full_name or _d}\n"
         f"Телефон: {lead.phone or _d}\n"
-        f"Email: {lead.email or _d}\n\n"
+        f"Email: {lead.email or _d}\n"
+        f"Тег: {lead.tag or _d}\n\n"
         f"Доставка:\n"
         f"Telegram: {tg_s}\n"
         f"Google Sheet: {sh_s}\n"
@@ -75,3 +77,25 @@ def format_lead_card(lead: Any) -> str:
     if lead.delivery_error:
         text += f"\n\u26A0\uFE0F Ошибка: {lead.delivery_error[:200]}"
     return text
+
+
+def format_lead_notification(lead: Any) -> str:
+    """Чистое уведомление о лиде для получателя (клиентская сторона)."""
+    _d = "—"
+    try:
+        tag = lead.tag or (lead.form.name if lead.form else None) or _d
+    except Exception:
+        tag = _d
+
+    lines = [
+        "\U0001F525 <b>Новый лид!</b>",
+        "",
+        f"\U0001F3F7 <b>Тег:</b> {tag}",
+        f"\U0001F4C5 <b>Дата:</b> {fmt_dt(lead.created_at)}",
+        "",
+        f"\U0001F464 <b>Имя:</b> {lead.full_name or _d}",
+        f"\U0001F4DE <b>Телефон:</b> {lead.phone or _d}",
+    ]
+    if lead.email:
+        lines.append(f"\U0001F4E7 <b>Email:</b> {lead.email}")
+    return "\n".join(lines)

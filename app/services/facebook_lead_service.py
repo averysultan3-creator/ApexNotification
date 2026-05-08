@@ -76,10 +76,15 @@ def normalize_lead_data(raw: dict[str, Any]) -> dict[str, Any]:
     full_name = first("full_name", "name", "your_name") or (
         " ".join(p for p in [first("first_name"), first("last_name")] if p) or None
     )
+    tag = first(
+        "utm_campaign", "utm_source", "utm_content", "utm_medium", "utm_term",
+        "tag", "ref", "source", "campaign", "label",
+    )
     return {
         "full_name": full_name,
         "phone": first("phone_number", "phone", "телефон", "mobile"),
         "email": first("email", "email_address", "почта"),
+        "tag": tag,
     }
 
 
@@ -114,6 +119,8 @@ async def _process_one(session: AsyncSession, event: dict[str, str], *, bot: Bot
         raw = {}
 
     norm = normalize_lead_data(raw)
+    # tag fallback: utm-поле → offer_name формы → имя формы
+    tag = norm.get("tag") or (form.offer_name if form and form.offer_name else None) or (form.name if form else None)
     lead = await create_lead(
         session,
         client_id=form.client_id if form else None,
@@ -122,6 +129,7 @@ async def _process_one(session: AsyncSession, event: dict[str, str], *, bot: Bot
         full_name=norm.get("full_name"),
         phone=norm.get("phone"),
         email=norm.get("email"),
+        tag=tag,
         raw_data_json=json.dumps(raw, ensure_ascii=False),
     )
     await deliver_lead(session, bot, lead)

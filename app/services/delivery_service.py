@@ -8,7 +8,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.lead import Lead
 from app.models.client import Client
-from app.utils.formatters import format_lead_card, load_json_list
+from app.utils.formatters import format_lead_card, format_lead_notification, load_json_list
 from config import ADMIN_IDS, GOOGLE_SERVICE_ACCOUNT_JSON
 
 logger = logging.getLogger(__name__)
@@ -21,13 +21,14 @@ async def deliver_lead(session: AsyncSession, bot: Bot | None, lead: Lead) -> No
     sheet_ok = False
     errors: list[str] = []
 
-    text = format_lead_card(lead)
+    text_admin = format_lead_card(lead)
+    text_client = format_lead_notification(lead)
 
     # Send to admin
     if bot and ADMIN_IDS:
         for admin_id in ADMIN_IDS:
             try:
-                await bot.send_message(admin_id, text)
+                await bot.send_message(admin_id, text_admin)
                 telegram_ok = True
             except Exception as e:
                 logger.warning("admin tg %s: %s", admin_id, e)
@@ -37,7 +38,7 @@ async def deliver_lead(session: AsyncSession, bot: Bot | None, lead: Lead) -> No
     if bot and client:
         for tid in load_json_list(client.telegram_ids_json):
             try:
-                await bot.send_message(int(tid), text)
+                await bot.send_message(int(tid), text_client)
                 telegram_ok = True
             except Exception as e:
                 logger.warning("client tg %s tid %s: %s", client.id, tid, e)
