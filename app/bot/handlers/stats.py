@@ -8,6 +8,9 @@ from app.services.stats_service import (
     delivery_errors,
     leads_by_client,
     leads_by_facebook_form,
+    leads_stats_by_day,
+    preland_stats_by_day,
+    preland_stats_by_hour,
     preland_visits_clicks_ctr,
 )
 
@@ -72,4 +75,57 @@ async def stats_errors(callback: CallbackQuery, session: AsyncSession) -> None:
             lines.append(f"Lead #{log.lead_id} / {log.channel} / {log.recipient}: {log.error_message or '-'}")
         text = "\n".join(lines)
     await callback.message.edit_text(text[:3500], reply_markup=stats_menu_kb())
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "stats:leads_days")
+async def stats_leads_days(callback: CallbackQuery, session: AsyncSession) -> None:
+    rows = await leads_stats_by_day(session, days=7)
+    if not rows:
+        await callback.message.edit_text("📅 Лидов за 7 дней нет.", reply_markup=stats_menu_kb())
+        await callback.answer()
+        return
+    lines = ["📅 <b>Лиды по дням (7д)</b>\n"]
+    for r in rows:
+        bar = "█" * min(r["leads"], 20) if r["leads"] else "·"
+        lines.append(f"<code>{r['day']}</code>  {bar}  {r['leads']}")
+    await callback.message.edit_text("\n".join(lines), reply_markup=stats_menu_kb())
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data in ("stats:pl_days", "stats:pl_days_7"))
+async def stats_pl_days(callback: CallbackQuery, session: AsyncSession) -> None:
+    days = 7 if callback.data == "stats:pl_days_7" else 3
+    rows = await preland_stats_by_day(session, days=days)
+    if not rows:
+        await callback.message.edit_text(f"📅 Нет данных за {days}д.", reply_markup=stats_menu_kb())
+        await callback.answer()
+        return
+    lines = [f"📅 <b>Prelands по дням ({days}д)</b>\n"]
+    for r in rows:
+        bar_v = "▓" * min(r["visits"], 15)
+        bar_c = "░" * min(r["clicks"], 15)
+        lines.append(
+            f"<code>{r['day']}</code>\n"
+            f"  👁 {r['visits']} {bar_v}\n"
+            f"  👆 {r['clicks']} {bar_c}  CTR {r['ctr']}%"
+        )
+    await callback.message.edit_text("\n".join(lines)[:3800], reply_markup=stats_menu_kb())
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "stats:pl_hours")
+async def stats_pl_hours(callback: CallbackQuery, session: AsyncSession) -> None:
+    rows = await preland_stats_by_hour(session)
+    if not rows:
+        await callback.message.edit_text("🕐 Сегодня данных нет.", reply_markup=stats_menu_kb())
+        await callback.answer()
+        return
+    lines = ["🕐 <b>Prelands по часам (сегодня, UTC)</b>\n"]
+    for r in rows:
+        bar = "█" * min(r["visits"], 12) if r["visits"] else "·"
+        lines.append(
+            f"<code>{r['hour']}</code>  👁{r['visits']} 👆{r['clicks']}  {bar}  CTR {r['ctr']}%"
+        )
+    await callback.message.edit_text("\n".join(lines)[:3800], reply_markup=stats_menu_kb())
     await callback.answer()

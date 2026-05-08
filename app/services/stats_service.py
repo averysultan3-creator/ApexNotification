@@ -125,3 +125,89 @@ async def preland_visits_clicks_ctr(session: AsyncSession, days: int = 1) -> dic
     )
     prelands = int((await session.execute(select(func.count()).select_from(Preland))).scalar_one())
     return {"prelands": prelands, "visits": visits, "clicks": clicks, "ctr": percent(clicks, visits)}
+
+
+async def preland_stats_by_day(session: AsyncSession, days: int = 7) -> list[dict[str, Any]]:
+    """Visits / clicks / CTR сгруппированные по дням за последние N дней."""
+    date_from = datetime.utcnow() - timedelta(days=days)
+    day_col = func.strftime("%Y-%m-%d", PrelandEvent.created_at).label("day")
+
+    visits_q = (
+        select(day_col, func.count().label("cnt"))
+        .where(
+            PrelandEvent.created_at >= date_from,
+            PrelandEvent.event_type == PrelandEventType.page_view.value,
+        )
+        .group_by("day")
+        .order_by("day")
+    )
+    clicks_q = (
+        select(day_col, func.count().label("cnt"))
+        .where(
+            PrelandEvent.created_at >= date_from,
+            PrelandEvent.event_type == PrelandEventType.button_click.value,
+        )
+        .group_by("day")
+        .order_by("day")
+    )
+    visits_map = {row.day: row.cnt for row in (await session.execute(visits_q)).all()}
+    clicks_map = {row.day: row.cnt for row in (await session.execute(clicks_q)).all()}
+
+    all_days = sorted(set(list(visits_map) + list(clicks_map)))
+    result = []
+    for day in all_days:
+        v = visits_map.get(day, 0)
+        c = clicks_map.get(day, 0)
+        result.append({"day": day, "visits": v, "clicks": c, "ctr": percent(c, v)})
+    return result
+
+
+async def preland_stats_by_hour(session: AsyncSession) -> list[dict[str, Any]]:
+    """Visits / clicks по часам за сегодня (UTC)."""
+    today = _today_start()
+    hour_col = func.strftime("%H", PrelandEvent.created_at).label("hour")
+
+    visits_q = (
+        select(hour_col, func.count().label("cnt"))
+        .where(
+            PrelandEvent.created_at >= today,
+            PrelandEvent.event_type == PrelandEventType.page_view.value,
+        )
+        .group_by("hour")
+        .order_by("hour")
+    )
+    clicks_q = (
+        select(hour_col, func.count().label("cnt"))
+        .where(
+            PrelandEvent.created_at >= today,
+            PrelandEvent.event_type == PrelandEventType.button_click.value,
+        )
+        .group_by("hour")
+        .order_by("hour")
+    )
+    visits_map = {row.hour: row.cnt for row in (await session.execute(visits_q)).all()}
+    clicks_map = {row.hour: row.cnt for row in (await session.execute(clicks_q)).all()}
+
+    result = []
+    for h in range(24):
+        hh = f"{h:02d}"
+        v = visits_map.get(hh, 0)
+        c = clicks_map.get(hh, 0)
+        if v or c:
+            result.append({"hour": f"{hh}:00", "visits": v, "clicks": c, "ctr": percent(c, v)})
+    return result
+
+
+async def leads_stats_by_day(session: AsyncSession, days: int = 7) -> list[dict[str, Any]]:
+    """Лиды сгруппированные по дням за N дней."""
+    date_from = datetime.utcnow() - timedelta(days=days)
+    from app.models.client import Client
+    day_col = func.strftime("%Y-%m-%d", Lead.created_at).label("day")
+    stmt = (
+        select(day_col, func.count(Lead.id).label("cnt"))
+        .where(Lead.created_at >= date_from)
+        .group_by("day")
+        .order_by("day")
+    )
+    rows = (await session.execute(stmt)).all()
+    return [{"day": row.day, "leads": row.cnt} for row in rows]
