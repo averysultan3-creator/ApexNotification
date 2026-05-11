@@ -1,5 +1,12 @@
 @echo off
 chcp 65001 >nul 2>&1
+:: Keep window alive when opened interactively (double-click / no args)
+if not "%~1"=="" goto skip_keep_open
+if defined APEX_WRAP goto skip_keep_open
+set "APEX_WRAP=1"
+cmd /k "%~f0"
+exit /b 0
+:skip_keep_open
 setlocal enabledelayedexpansion
 title Apex Lead Router
 
@@ -308,7 +315,7 @@ echo ============================================================
 echo  [OK] Setup done! Next: choose 2 to Start server.
 echo ============================================================
 echo.
-if defined APEX_AUTORUN goto :eof
+if defined APEX_AUTORUN exit /b 0
 pause & goto menu
 
 :: ============================================================
@@ -390,7 +397,7 @@ if "!READY!"=="1" (
     if exist "!DIR!\logs\server.log" powershell -NoProfile -Command "Get-Content '!DIR!\logs\server.log' -Tail 15"
 )
 echo.
-if defined APEX_AUTORUN goto :eof
+if defined APEX_AUTORUN exit /b 0
 pause & goto menu
 
 :: ============================================================
