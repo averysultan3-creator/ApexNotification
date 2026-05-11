@@ -116,7 +116,9 @@ echo   8. Autostart   (register/remove Windows auto-start)
 echo   9. Update      (git pull + migrate + restart)
 echo   0. Exit
 echo.
+set "CHOICE="
 set /p CHOICE=Choose [0-9]: 
+if not defined CHOICE exit /b 0
 if "!CHOICE!"=="1" goto do_setup
 if "!CHOICE!"=="2" goto do_start
 if "!CHOICE!"=="3" goto do_stop
@@ -346,7 +348,8 @@ if not exist "!DIR!\logs"    mkdir "!DIR!\logs"
 
 :: Kill by PID file
 if exist "!PID_FILE!" (
-    set /p OLD_PID=<"!PID_FILE!"
+    set "OLD_PID="
+    for /f "usebackq" %%p in ("!PID_FILE!") do set "OLD_PID=%%p"
     if not "!OLD_PID!"=="" (
         tasklist /fi "pid eq !OLD_PID!" /fo csv /nh 2>nul | findstr /i "python" >nul 2>&1
         if not errorlevel 1 (
@@ -416,7 +419,8 @@ echo.
 set "STOPPED=0"
 
 if exist "!PID_FILE!" (
-    set /p PID=<"!PID_FILE!"
+    set "PID="
+    for /f "usebackq" %%p in ("!PID_FILE!") do set "PID=%%p"
     if not "!PID!"=="" (
         tasklist /fi "pid eq !PID!" /fo csv /nh 2>nul | findstr /i "python" >nul 2>&1
         if not errorlevel 1 (
@@ -451,7 +455,8 @@ goto do_stop_for_restart
 :do_stop_for_restart
 set "STOPPED=0"
 if exist "!PID_FILE!" (
-    set /p PID=<"!PID_FILE!"
+    set "PID="
+    for /f "usebackq" %%p in ("!PID_FILE!") do set "PID=%%p"
     if not "!PID!"=="" (
         tasklist /fi "pid eq !PID!" /fo csv /nh 2>nul | findstr /i "python" >nul 2>&1
         if not errorlevel 1 taskkill /pid !PID! /t /f >nul 2>&1
@@ -468,7 +473,8 @@ goto do_start
 :do_status
 echo.
 if exist "!PID_FILE!" (
-    set /p P=<"!PID_FILE!"
+    set "P="
+    for /f "usebackq" %%p in ("!PID_FILE!") do set "P=%%p"
     echo PID file: !P!
     tasklist /FI "PID eq !P!" 2>nul | findstr /I python.exe >nul && echo Process: RUNNING || echo Process: NOT RUNNING (stale PID)
 ) else (
