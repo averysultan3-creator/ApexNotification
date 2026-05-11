@@ -200,12 +200,15 @@ function _cleanPhone(phone) {
 }
 
 // Smart handle finder: finds @username from any column.
-// Priority: 1) column name looks like "telegram/tg/ник/handle"
+// Priority: 1) column name contains telegram/tg/@ keywords (any language)
 //           2) any cell value that starts with @ or contains t.me/
 function _findHandle(headers, row) {
-  // Priority 1: by column name keywords
-  var nameKeywords = ["telegram", "tg", "ник", "nick", "нік", "handle",
-    "username", "твой", "твій", "instagram", "insta", "ig", "соц"];
+  // Priority 1: by column name keywords (EN + RU/UA + symbol @)
+  var nameKeywords = [
+    "telegram", "tg", "handle", "username", "instagram", "insta", "ig",
+    "телеграм", "телегр", "тг", "тег", "ник", "нік", "nick",
+    "твой", "твій", "соц", "@"
+  ];
   for (var n = 0; n < nameKeywords.length; n++) {
     var kw = nameKeywords[n].toLowerCase();
     for (var h = 0; h < headers.length; h++) {
