@@ -112,3 +112,21 @@ async def list_leads_errors(session: AsyncSession) -> list[Lead]:
         .limit(50)
     )
     return list(result.scalars().all())
+
+
+async def list_leads_all(session: AsyncSession, limit: int = 200) -> list[Lead]:
+    result = await session.execute(
+        select(Lead).order_by(Lead.created_at.desc()).limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def list_leads_undelivered(session: AsyncSession) -> list[Lead]:
+    """Leads that were saved but not delivered to any recipient (no error, just no recipients or bot was None)."""
+    result = await session.execute(
+        select(Lead)
+        .where(Lead.delivered_clients == False)  # noqa: E712
+        .order_by(Lead.created_at.desc())
+        .limit(50)
+    )
+    return list(result.scalars().all())

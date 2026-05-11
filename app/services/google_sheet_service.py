@@ -193,6 +193,11 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
 
     await session.flush()
 
+    logger.info(
+        "lead saved funnel=%s id=%s name=%r recipients_ok=%d errors=%d",
+        funnel.id, lead.id, lead.full_name, recipients_ok, len(errors),
+    )
+
     if errors:
         err_preview = errors[0][:180]
         await notify_admins(

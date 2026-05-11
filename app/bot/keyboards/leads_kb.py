@@ -5,7 +5,9 @@ def leads_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📅 Сегодня", callback_data="leads:today")],
         [InlineKeyboardButton(text="⚠️ Ошибки", callback_data="leads:errors")],
+        [InlineKeyboardButton(text="� Не доставлено", callback_data="leads:undelivered")],
         [InlineKeyboardButton(text="📋 Последние 20", callback_data="leads:last20")],
+        [InlineKeyboardButton(text="📂 Все лиды", callback_data="leads:all")],
         [InlineKeyboardButton(text="⬅ Назад", callback_data="main:menu")],
     ])
 

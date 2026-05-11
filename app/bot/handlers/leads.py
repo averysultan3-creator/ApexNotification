@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.leads_kb import lead_card_kb, leads_list_kb, leads_menu_kb
 from app.services.lead_service import (
     get_lead_by_id,
+    list_leads_all,
     list_leads_errors,
     list_leads_last_n,
     list_leads_today,
+    list_leads_undelivered,
 )
 from app.utils.formatters import format_lead_card
 
@@ -61,6 +63,32 @@ async def leads_last20(callback: CallbackQuery, session: AsyncSession) -> None:
         return
     await callback.message.edit_text(
         f"Последние {len(leads)} лидов:",
+        reply_markup=leads_list_kb(leads, back_cb="leads:menu"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "leads:all")
+async def leads_all(callback: CallbackQuery, session: AsyncSession) -> None:
+    leads = await list_leads_all(session, limit=200)
+    if not leads:
+        await callback.answer("Лидов ещё нет.", show_alert=True)
+        return
+    await callback.message.edit_text(
+        f"Все лиды ({len(leads)}):",
+        reply_markup=leads_list_kb(leads, back_cb="leads:menu"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data == "leads:undelivered")
+async def leads_undelivered(callback: CallbackQuery, session: AsyncSession) -> None:
+    leads = await list_leads_undelivered(session)
+    if not leads:
+        await callback.answer("Все лиды доставлены.", show_alert=True)
+        return
+    await callback.message.edit_text(
+        f"Не доставлено ({len(leads)}):",
         reply_markup=leads_list_kb(leads, back_cb="leads:menu"),
     )
     await callback.answer()

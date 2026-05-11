@@ -199,6 +199,24 @@ function _getField(headers, row, names) {
   }
   return null;
 }
+
+// -------------------------------------------------------
+// Emergency helpers — run manually in Apps Script editor
+// -------------------------------------------------------
+
+// Reset sent-IDs cache so ALL rows are re-processed on next run.
+// The server deduplicates by external_lead_id, so no double-saves.
+function resetSentIds() {
+  PropertiesService.getScriptProperties().deleteProperty("SENT_IDS");
+  Logger.log("SENT_IDS cleared. Next sendNewLeads() run will re-process all rows.");
+}
+
+// Force-send all rows right now (same as resetSentIds + sendNewLeads).
+function forceResend() {
+  resetSentIds();
+  sendNewLeads();
+  Logger.log("forceResend done.");
+}
 '''
 
     return (
