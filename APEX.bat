@@ -629,7 +629,9 @@ echo   1. Register autostart (run on Windows login)
 echo   2. Remove autostart
 echo   0. Back
 echo.
+set "ACHOICE="
 set /p ACHOICE=Choose [0-2]: 
+if not defined ACHOICE goto menu
 if "!ACHOICE!"=="1" goto autostart_register
 if "!ACHOICE!"=="2" goto autostart_remove
 goto menu
