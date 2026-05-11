@@ -4,9 +4,10 @@ import logging
 from typing import Any
 import httpx
 from aiogram import Bot
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.funnel_form import FunnelForm
 from app.services.delivery_service import deliver_lead
-from app.services.facebook_form_service import get_form_by_fb_form_id
 from app.services.lead_service import create_lead, get_lead_by_fb_lead_id
 from app.utils.facebook import LEADGEN_FIELD, graph_lead_url
 from config import FACEBOOK_GRAPH_VERSION, FACEBOOK_PAGE_ACCESS_TOKEN, FACEBOOK_VERIFY_TOKEN
@@ -110,7 +111,10 @@ async def _process_one(session: AsyncSession, event: dict[str, str], *, bot: Bot
     if await get_lead_by_fb_lead_id(session, leadgen_id):
         return None
 
-    form = await get_form_by_fb_form_id(session, fb_form_id)
+    # Find matching FunnelForm by fb_form_id field
+    form: FunnelForm | None = (await session.execute(
+        select(FunnelForm).where(FunnelForm.fb_form_id == fb_form_id)
+    )).scalar_one_or_none()
 
     try:
         raw = await fetch_lead_details(leadgen_id)
@@ -119,13 +123,14 @@ async def _process_one(session: AsyncSession, event: dict[str, str], *, bot: Bot
         raw = {}
 
     norm = normalize_lead_data(raw)
-    # tag fallback: utm-поле → offer_name формы → имя формы
-    tag = norm.get("tag") or (form.offer_name if form and form.offer_name else None) or (form.name if form else None)
+    # tag fallback: utm-поле → form tag → form name
+    tag = norm.get("tag") or (form.tag if form else None) or (form.form_name if form else None)
     lead = await create_lead(
         session,
-        client_id=form.client_id if form else None,
-        facebook_form_id=form.id if form else None,
+        funnel_form_id=form.id if form else None,
         fb_lead_id=leadgen_id,
+        fb_form_id=fb_form_id,
+        fb_page_id=event.get("page_id"),
         full_name=norm.get("full_name"),
         phone=norm.get("phone"),
         email=norm.get("email"),

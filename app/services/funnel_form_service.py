@@ -73,11 +73,33 @@ async def get_form_by_join_code(
     )).scalar_one_or_none()
 
 
-async def list_forms(session: AsyncSession) -> list[FunnelForm]:
+async def list_forms(session: AsyncSession, include_archived: bool = False) -> list[FunnelForm]:
+    stmt = select(FunnelForm).order_by(FunnelForm.created_at.desc())
+    if not include_archived:
+        stmt = stmt.where(FunnelForm.status != FunnelFormStatus.archived.value)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def list_archived_forms(session: AsyncSession) -> list[FunnelForm]:
     result = await session.execute(
-        select(FunnelForm).order_by(FunnelForm.created_at.desc())
+        select(FunnelForm)
+        .where(FunnelForm.status == FunnelFormStatus.archived.value)
+        .order_by(FunnelForm.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def archive_form(session: AsyncSession, form: FunnelForm) -> FunnelForm:
+    form.status = FunnelFormStatus.archived.value
+    await session.flush()
+    return form
+
+
+async def restore_form(session: AsyncSession, form: FunnelForm) -> FunnelForm:
+    form.status = FunnelFormStatus.active.value
+    await session.flush()
+    return form
 
 
 async def toggle_form_status(session: AsyncSession, form: FunnelForm) -> FunnelForm:
@@ -95,3 +117,8 @@ async def update_apps_script_url(
     form.apps_script_web_app_url = url
     await session.flush()
     return form
+
+
+async def delete_form(session: AsyncSession, form: FunnelForm) -> None:
+    await session.delete(form)
+    await session.flush()

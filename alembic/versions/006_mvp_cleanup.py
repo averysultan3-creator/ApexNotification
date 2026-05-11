@@ -75,6 +75,9 @@ def upgrade() -> None:
         existing = {c["name"] for c in inspector.get_columns("prelands")}
         drop_cols = [c for c in ("client_id", "offer_name", "updated_at") if c in existing]
         if drop_cols:
+            indexes = {idx["name"] for idx in inspector.get_indexes("prelands")}
+            if "ix_prelands_client_id" in indexes:
+                op.drop_index("ix_prelands_client_id", table_name="prelands")
             with op.batch_alter_table("prelands") as batch_op:
                 for col in drop_cols:
                     batch_op.drop_column(col)

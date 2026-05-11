@@ -30,7 +30,12 @@ async def receive(
     body = await request.body()
     if not verify_facebook_signature(FACEBOOK_APP_SECRET, body, request.headers.get("x-hub-signature-256")):
         raise HTTPException(status_code=403, detail="Invalid Facebook signature")
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload")
     bot = getattr(request.app.state, "bot", None)
     leads = await process_facebook_lead(session, payload, bot=bot)
     return {"status": "ok", "processed": len(leads)}

@@ -9,6 +9,7 @@ from database import Base
 class PrelandStatus(str, enum.Enum):
     active = "active"
     inactive = "inactive"
+    archived = "archived"
 
 
 class Preland(Base):
@@ -17,13 +18,18 @@ class Preland(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default=PrelandStatus.active.value, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
     events: Mapped[list["PrelandEvent"]] = relationship(
-        "PrelandEvent", back_populates="preland", cascade="all, delete-orphan", lazy="selectin"
+        "PrelandEvent",
+        primaryjoin="foreign(PrelandEvent.preland_id) == Preland.id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        overlaps="link",
     )
 
     def __repr__(self) -> str:

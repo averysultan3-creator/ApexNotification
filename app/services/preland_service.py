@@ -5,9 +5,15 @@ from app.models.preland import Preland, PrelandStatus
 
 
 async def create_preland(
-    session: AsyncSession, *, name: str, slug: str, url: str | None = None
+    session: AsyncSession, *, name: str, slug: str, url: str | None = None,
+    display_name: str | None = None,
 ) -> Preland:
-    p = Preland(name=name.strip(), slug=slug.strip(), url=url.strip() if url else None)
+    p = Preland(
+        name=name.strip(),
+        slug=slug.strip(),
+        url=url.strip() if url else None,
+        display_name=display_name.strip() if display_name else None,
+    )
     session.add(p)
     await session.flush()
     await session.refresh(p)
@@ -26,11 +32,33 @@ async def get_preland_by_slug(session: AsyncSession, slug: str) -> Preland | Non
     )).scalar_one_or_none()
 
 
-async def list_prelands(session: AsyncSession, active_only: bool = False) -> list[Preland]:
+async def list_prelands(session: AsyncSession, active_only: bool = False, include_archived: bool = False) -> list[Preland]:
     stmt = select(Preland).order_by(Preland.created_at.desc())
     if active_only:
         stmt = stmt.where(Preland.status == PrelandStatus.active.value)
+    elif not include_archived:
+        stmt = stmt.where(Preland.status != PrelandStatus.archived.value)
     return list((await session.execute(stmt)).scalars().all())
+
+
+async def list_archived_prelands(session: AsyncSession) -> list[Preland]:
+    return list((await session.execute(
+        select(Preland)
+        .where(Preland.status == PrelandStatus.archived.value)
+        .order_by(Preland.created_at.desc())
+    )).scalars().all())
+
+
+async def archive_preland(session: AsyncSession, preland: Preland) -> Preland:
+    preland.status = PrelandStatus.archived.value
+    await session.flush()
+    return preland
+
+
+async def restore_preland(session: AsyncSession, preland: Preland) -> Preland:
+    preland.status = PrelandStatus.active.value
+    await session.flush()
+    return preland
 
 
 async def toggle_preland_status(session: AsyncSession, preland_id: int) -> Preland | None:

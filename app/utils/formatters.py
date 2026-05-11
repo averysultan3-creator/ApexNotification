@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 from datetime import datetime
+from html import escape
 from typing import Any
-from config import PUBLIC_BASE_URL
 
 
 def load_json_list(raw: str | None) -> list[Any]:
@@ -26,90 +28,141 @@ def percent(part: int, total: int) -> float:
 
 def fmt_dt(value: datetime | None) -> str:
     if not value:
-        return "—"
+        return "-"
     return value.strftime("%d.%m.%Y %H:%M")
 
 
+def fmt_date(value: datetime | None) -> str:
+    if not value:
+        return "-"
+    return value.strftime("%d.%m")
+
+
+def html_escape(value: Any) -> str:
+    return escape(str(value), quote=False)
+
+
 def format_dashboard(data: dict[str, Any]) -> str:
+    errors = data.get("delivery_errors_today", 0)
+    error_line = (
+        f"\n\n⚠\ufe0f Ошибок доставки: {errors}. Откройте Лиды → Ошибки."
+        if errors else ""
+    )
     return (
-        "\U0001F3E0 <b>Apex Lead Router</b>\n\n"
+        "<b>Apex Lead Router</b>\n\n"
         "Сегодня:\n"
-        f"\U0001F4E5 Лидов: {data.get('leads_today', 0)}\n"
-        f"\u2705 Доставлено: {data.get('delivered_today', 0)}\n"
-        f"\u26A0\uFE0F Ошибок: {data.get('delivery_errors_today', 0)}\n\n"
-        "Prelands:\n"
-        f"\U0001F441 Заходов: {data.get('preland_visits_today', 0)}\n"
-        f"\U0001F446 Кликов: {data.get('preland_clicks_today', 0)}\n"
-        f"\U0001F4C8 CTR: {data.get('preland_ctr_today', 0)}%\n\n"
-        "Что открыть?"
+        f"Лиды: {data.get('leads_today', 0)}\n"
+        f"Доставлено клиентам: {data.get('delivered_today', 0)}\n"
+        f"Ошибок доставки: {errors}\n\n"
+        "Преленды:\n"
+        f"Просмотры: {data.get('preland_visits_today', 0)}\n"
+        f"Клики: {data.get('preland_clicks_today', 0)}\n"
+        f"CTR: {data.get('preland_ctr_today', 0)}%"
+        f"{error_line}\n\n"
+        "Выберите действие."
+    )
+
+
+def _lead_core(lead: Any) -> dict[str, str]:
+    empty = "-"
+    try:
+        tag = lead.tag or (lead.funnel_form.tag if lead.funnel_form else None) or empty
+        funnel_name = (
+            lead.form_name
+            or (lead.funnel_form.form_name if lead.funnel_form else None)
+            or empty
+        )
+    except Exception:
+        tag = empty
+        funnel_name = empty
+
+    date_val = getattr(lead, "lead_created_time", None) or getattr(lead, "created_at", None)
+    return {
+        "tag": html_escape(tag),
+        "funnel_name": html_escape(funnel_name),
+        "full_name": html_escape(getattr(lead, "full_name", None) or empty),
+        "phone": html_escape(getattr(lead, "phone", None) or empty),
+        "telegram": html_escape(getattr(lead, "telegram", None) or empty),
+        "email": html_escape(getattr(lead, "email", None) or empty),
+        "date": fmt_dt(date_val),
+    }
+
+
+def format_lead_for_client(lead: Any, *, is_archive: bool = False) -> str:
+    f = _lead_core(lead)
+    header = "<b>\U0001f4e6 Архивный лид</b>" if is_archive else "<b>\U0001f514 Новый лид</b>"
+    lines = [
+        header,
+        "",
+        f"<b>Тег:</b> {f['tag']}",
+        "",
+        f"<b>Воронка:</b>\n{f['funnel_name']}",
+        "",
+        f"<b>Имя:</b>\n{f['full_name']}",
+        "",
+        f"<b>Телефон:</b>\n{f['phone']}",
+        "",
+        f"<b>Telegram:</b>\n{f['telegram']}",
+    ]
+    if f["email"] != "-":
+        lines += ["", f"<b>Email:</b>\n{f['email']}"]
+    lines += ["", f"<b>Дата:</b>\n{f['date']}"]
+    return "\n".join(lines)
+
+
+def format_lead_for_admin(lead: Any) -> str:
+    f = _lead_core(lead)
+    cnt = getattr(lead, "delivered_recipients_count", 0)
+    err_line = (
+        f"\nWarning: {html_escape(str(lead.delivery_error)[:120])}"
+        if getattr(lead, "delivery_error", None) else ""
+    )
+    return (
+        f"<b>Lead #{lead.id}</b>\n\n"
+        f"<b>Funnel:</b>\n{f['funnel_name']}\n\n"
+        f"<b>Recipients:</b>\n{cnt}\n\n"
+        f"<b>Name:</b>\n{f['full_name']}\n\n"
+        f"<b>Phone:</b>\n{f['phone']}\n\n"
+        f"<b>Telegram:</b>\n{f['telegram']}\n\n"
+        f"<b>Email:</b>\n{f['email']}\n\n"
+        f"<b>Date:</b>\n{f['date']}\n\n"
+        f"<b>Delivery:</b>\nClients: {cnt}{err_line}"
     )
 
 
 def format_lead_notification(lead: Any) -> str:
-    """Чистое уведомление для получателя (клиента)."""
-    _d = "—"
-    try:
-        tag = lead.tag or (lead.funnel_form.tag if lead.funnel_form else None) or _d
-        form_name = lead.funnel_form.form_name if lead.funnel_form else _d
-    except Exception:
-        tag = _d
-        form_name = _d
-
-    lines = [
-        "\U0001F525 <b>Новый лид!</b>",
-        "",
-        f"\U0001F3F7 <b>Тег:</b> {tag}",
-        f"\U0001F4CB <b>Форма:</b> {form_name}",
-        "",
-        f"\U0001F464 <b>Имя:</b> {lead.full_name or _d}",
-        f"\U0001F4DE <b>Телефон:</b> {lead.phone or _d}",
-    ]
-    if lead.email:
-        lines.append(f"\U0001F4E7 <b>Email:</b> {lead.email}")
-    lines += ["", f"\U0001F552 <b>Дата:</b> {fmt_dt(lead.created_at)}"]
-    return "\n".join(lines)
+    return format_lead_for_client(lead)
 
 
 def format_lead_card(lead: Any) -> str:
-    """Полная карточка лида для администратора."""
-    _d = "—"
-    try:
-        form_name = lead.funnel_form.form_name if lead.funnel_form else _d
-        tag = lead.tag or (lead.funnel_form.tag if lead.funnel_form else None) or _d
-    except Exception:
-        form_name = _d
-        tag = _d
+    return format_lead_for_admin(lead)
 
-    adm = "\u2705" if lead.delivered_admin else "\u274C"
-    cli = "\u2705" if lead.delivered_clients else "\u2014"
-    sh = "\u2705" if lead.delivered_sheet else "\u2014"
 
-    text = (
-        f"\U0001F4E5 <b>Лид #{lead.id}</b>\n\n"
-        f"Форма: {form_name}\n"
-        f"Тег: {tag}\n"
-        f"Дата: {fmt_dt(lead.created_at)}\n\n"
-        f"Имя: {lead.full_name or _d}\n"
-        f"Телефон: {lead.phone or _d}\n"
-        f"Email: {lead.email or _d}\n\n"
-        f"Доставка:\n"
-        f"Админ: {adm}  Клиенты: {cli}  Sheet: {sh}\n"
+def format_funnel_card(
+    form: Any,
+    leads_total: int,
+    leads_today: int,
+    delivered_today: int,
+    errors_today: int,
+    recipients_count: int,
+) -> str:
+    sheet_info = html_escape(form.google_sheet_id) if form.google_sheet_id else "не подключен"
+    status = "\U0001f7e2 активна" if form.status == "active" else "⏸ на паузе"
+    no_clients_warn = (
+        "\n\n⚠\ufe0f Нет активных получателей. Лиды сохраняются, но не доставляются."
+        if recipients_count == 0 else ""
     )
-    if lead.delivery_error:
-        text += f"\n\u26A0\uFE0F {lead.delivery_error[:200]}"
-    return text
-
-
-def format_funnel_card(form: Any, leads_total: int, leads_today: int, recipients_count: int) -> str:
-    _d = "—"
-    sheet_status = "✅ подключён" if form.google_sheet_id else "❌ не подключён"
-    status_icon = "🟢" if form.status == "active" else "🔴"
     return (
-        f"{status_icon} <b>{form.form_name}</b>\n\n"
-        f"Тег: {form.tag or _d}\n"
-        f"FB Form ID: <code>{form.fb_form_id}</code>\n\n"
-        f"Получателей: {recipients_count}\n"
-        f"Лидов всего: {leads_total}\n"
-        f"Лидов сегодня: {leads_today}\n\n"
-        f"Google Sheet: {sheet_status}"
+        f"<b>Воронка:</b>\n{html_escape(form.form_name)}\n\n"
+        f"<b>Тег:</b>\n{html_escape(form.tag or '-')}\n\n"
+        f"<b>Статус:</b>\n{status}\n\n"
+        f"<b>Подключения:</b>\n"
+        f"Google Sheet: {sheet_info}\n"
+        f"Получатели: {recipients_count}\n\n"
+        f"<b>Статистика:</b>\n"
+        f"Всего лидов: {leads_total}\n"
+        f"Сегодня лидов: {leads_today}\n"
+        f"Доставлено сегодня: {delivered_today}\n"
+        f"Ошибок сегодня: {errors_today}"
+        f"{no_clients_warn}"
     )

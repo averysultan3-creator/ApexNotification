@@ -1,7 +1,7 @@
 from __future__ import annotations
 import enum
 from datetime import datetime
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -13,6 +13,9 @@ class RecipientStatus(str, enum.Enum):
 
 class ClientRecipient(Base):
     __tablename__ = "client_recipients"
+    __table_args__ = (
+        UniqueConstraint("funnel_form_id", "telegram_user_id", name="uq_client_recipients_form_user"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     funnel_form_id: Mapped[int] = mapped_column(

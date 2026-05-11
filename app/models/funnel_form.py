@@ -9,6 +9,7 @@ from database import Base
 class FunnelFormStatus(str, enum.Enum):
     active = "active"
     disabled = "disabled"
+    archived = "archived"
 
 
 class FunnelForm(Base):

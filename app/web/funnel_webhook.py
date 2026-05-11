@@ -17,12 +17,20 @@ router = APIRouter(prefix="/api/funnel", tags=["funnel"])
 
 def _parse_events(payload: dict) -> list[dict]:
     events = []
+    if not isinstance(payload, dict):
+        return events
     for entry in payload.get("entry", []) or []:
+        if not isinstance(entry, dict):
+            continue
         page_id = str(entry.get("id") or "")
         for change in entry.get("changes", []) or []:
+            if not isinstance(change, dict):
+                continue
             if change.get("field") != LEADGEN_FIELD:
                 continue
             val = change.get("value") or {}
+            if not isinstance(val, dict):
+                continue
             leadgen_id = val.get("leadgen_id") or val.get("lead_id")
             form_id = val.get("form_id")
             if leadgen_id and form_id:
@@ -80,6 +88,7 @@ def _normalize(raw: dict) -> dict:
         "full_name": full_name,
         "phone": first("phone_number", "phone", "mobile"),
         "email": first("email", "email_address"),
+        "telegram": first("telegram", "tg", "telegram_username", "username"),
         "tag": tag,
     }
 
@@ -117,6 +126,7 @@ async def receive_lead(
                 full_name=norm.get("full_name"),
                 phone=norm.get("phone"),
                 email=norm.get("email"),
+                telegram=norm.get("telegram"),
                 tag=tag,
                 raw_data_json=json.dumps(raw, ensure_ascii=False),
             )
