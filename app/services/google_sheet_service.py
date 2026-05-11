@@ -26,13 +26,29 @@ logger = logging.getLogger(__name__)
 
 
 _HANDLE_COL_KEYWORDS = [
-    # Latin
-    "telegram", "tg", "handle", "username", "instagram", "insta", "ig",
+    # Latin — only unambiguous long keywords
+    "telegram", "handle", "username",
     # Cyrillic
-    "телеграм", "телегр", "тг", "тег", "ник", "нік", "nick", "соц",
+    "телеграм", "телегр", "тг", "тег", "ник", "нік", "твой", "твій",
     # Symbol in column name
     "@",
 ]
+
+_HANDLE_RE = re.compile(r'^@[a-zA-Z0-9_.]{2,}|t\.me/', re.IGNORECASE)
+
+
+def _looks_like_handle(val: str) -> bool:
+    """True if value could be a real telegram/social handle."""
+    if not val:
+        return False
+    # Must start with @ OR contain t.me/ OR be a plain word (no : / digits-only)
+    if _HANDLE_RE.search(val):
+        return True
+    # Plain username: letters/digits/underscores, no colons, no spaces, reasonable length
+    import re as _re
+    if _re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{2,31}$', val) and ':' not in val:
+        return True
+    return False
 
 
 def _find_handle_in_raw(raw: dict) -> str:
@@ -50,9 +66,10 @@ def _find_handle_in_raw(raw: dict) -> str:
         if not cell:
             continue
         col_lower = str(col).lower()
-        # Priority 1: column name matches keyword
+        # Priority 1: column name matches keyword — but value must look like a handle
         if any(kw in col_lower for kw in _HANDLE_COL_KEYWORDS):
-            return cell
+            if _looks_like_handle(cell):
+                return cell
         # Priority 2: value looks like a handle
         if not fallback:
             if re.match(r'^@[a-zA-Z0-9_.]{2,}', cell) or re.search(r't\.me/', cell, re.IGNORECASE):
@@ -122,7 +139,15 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
     ).scalar_one_or_none()
 
     if existing:
-        logger.info("duplicate lead funnel=%s external=%s", funnel.id, external_lead_id)
+        # On duplicate — update telegram/phone if they were missing
+        raw_data_dup = payload.get("raw") or {}
+        _tg_dup = str(payload.get("telegram") or "").strip() or _find_handle_in_raw(raw_data_dup)
+        if _tg_dup and not existing.telegram:
+            existing.telegram = _tg_dup
+            await session.flush()
+            logger.info("duplicate lead funnel=%s id=%s — updated telegram=%s", funnel.id, existing.id, _tg_dup)
+        else:
+            logger.info("duplicate lead funnel=%s external=%s", funnel.id, external_lead_id)
         return {"ok": True, "duplicate": True, "lead_id": existing.id}
 
     lead_created_time: datetime | None = None
