@@ -26,28 +26,33 @@ logger = logging.getLogger(__name__)
 
 
 _HANDLE_COL_KEYWORDS = [
-    "telegram", "tg", "ник", "nick", "нік", "handle",
-    "username", "instagram", "insta", "ig", "соц",
+    # Latin
+    "telegram", "tg", "handle", "username", "instagram", "insta", "ig",
+    # Cyrillic
+    "телеграм", "телегр", "тг", "тег", "ник", "нік", "nick", "соц",
+    # Symbol in column name
+    "@",
 ]
 
 
 def _find_handle_in_raw(raw: dict) -> str:
     """
     Scan all columns in raw payload.
-    Priority 1: column name contains telegram/tg/nick/handle keywords.
+    Priority 1: column name contains telegram/tg/@ keywords (Latin or Cyrillic).
     Priority 2: any cell value that looks like @handle or t.me/xxx.
     """
     import re
     fallback = ""
     for col, val in raw.items():
-        if not val:
+        if val is None:
             continue
         cell = str(val).strip()
+        if not cell:
+            continue
         col_lower = str(col).lower()
-        # Priority 1: column name matches
+        # Priority 1: column name matches keyword
         if any(kw in col_lower for kw in _HANDLE_COL_KEYWORDS):
-            if cell:
-                return cell
+            return cell
         # Priority 2: value looks like a handle
         if not fallback:
             if re.match(r'^@[a-zA-Z0-9_.]{2,}', cell) or re.search(r't\.me/', cell, re.IGNORECASE):
