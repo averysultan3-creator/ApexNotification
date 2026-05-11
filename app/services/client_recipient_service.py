@@ -22,6 +22,15 @@ async def get_or_create_recipient(
         )
     )).scalar_one_or_none()
     if existing:
+        if existing.status != RecipientStatus.active.value:
+            # Re-activating a previously removed recipient — treat as new so old leads are sent
+            existing.status = RecipientStatus.active.value
+            if telegram_username:
+                existing.telegram_username = telegram_username
+            if first_name:
+                existing.first_name = first_name
+            await session.flush()
+            return existing, True  # is_new=True → triggers old leads delivery
         return existing, False
     recipient = ClientRecipient(
         funnel_form_id=funnel_form_id,
