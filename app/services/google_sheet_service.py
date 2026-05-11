@@ -1,20 +1,26 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 from datetime import datetime
+
+from aiogram import Bot
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from aiogram import Bot
 
+from app.models.client_recipient import ClientRecipient, RecipientStatus
 from app.models.funnel_form import FunnelForm
 from app.models.lead import Lead
-from app.models.client_recipient import ClientRecipient, RecipientStatus
-from app.models.lead_delivery_history import LeadDeliveryHistory, DeliveryType, DeliveryStatus
+from app.models.lead_delivery_history import (
+    DeliveryStatus,
+    DeliveryType,
+    LeadDeliveryHistory,
+)
+from app.services.admin_alert_service import notify_admins
 from app.services.funnel_form_service import get_form_by_id
 from app.utils.formatters import format_lead_for_client
-from config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +32,21 @@ async def handle_google_sheet_lead(
 ) -> dict:
     """
     POST /api/google-sheet/lead handler.
-    Admin does NOT receive a Telegram message for each lead.
-    Only clients (FunnelRecipients) receive messages.
+    Admin does not receive a Telegram message for every normal lead.
+    Admin is alerted only when delivery is broken or there are no recipients.
     """
     try:
         return await _process(session, bot, payload)
     except Exception as e:
         logger.exception("google_sheet_lead unhandled: %s", e)
+        try:
+            await notify_admins(
+                session,
+                bot,
+                f"Google Sheet lead endpoint failed.\n\nError: <code>{str(e)[:300]}</code>",
+            )
+        except Exception:
+            logger.exception("failed to send admin alert for google_sheet_lead")
         return {"ok": False, "error": "internal_error"}
 
 
@@ -63,18 +77,19 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
     if funnel.status != "active":
         return {"ok": False, "error": "funnel_paused"}
 
-    # ── Duplicate check ──────────────────────────────────────
-    existing = (await session.execute(
-        select(Lead).where(
-            Lead.funnel_form_id == funnel.id,
-            Lead.external_lead_id == external_lead_id,
+    existing = (
+        await session.execute(
+            select(Lead).where(
+                Lead.funnel_form_id == funnel.id,
+                Lead.external_lead_id == external_lead_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
 
     if existing:
+        logger.info("duplicate lead funnel=%s external=%s", funnel.id, external_lead_id)
         return {"ok": True, "duplicate": True, "lead_id": existing.id}
 
-    # ── Parse date ───────────────────────────────────────────
     lead_created_time: datetime | None = None
     raw_lct = payload.get("lead_created_time")
     if raw_lct:
@@ -85,7 +100,6 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
 
     raw_data = payload.get("raw") or {}
 
-    # ── Create lead ──────────────────────────────────────────
     lead = Lead(
         funnel_form_id=funnel.id,
         external_lead_id=external_lead_id,
@@ -99,7 +113,7 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
         tag=funnel.tag,
         lead_created_time=lead_created_time,
         raw_data_json=json.dumps(raw_data, ensure_ascii=False),
-        delivered_admin=False,   # admin does NOT get per-lead messages
+        delivered_admin=False,
         delivered_telegram=False,
         delivered_clients=False,
         delivered_recipients_count=0,
@@ -111,23 +125,39 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
         await session.refresh(lead)
     except IntegrityError:
         await session.rollback()
-        existing = (await session.execute(
-            select(Lead).where(
-                Lead.funnel_form_id == funnel_pk,
-                Lead.external_lead_id == external_lead_id,
+        existing = (
+            await session.execute(
+                select(Lead).where(
+                    Lead.funnel_form_id == funnel_pk,
+                    Lead.external_lead_id == external_lead_id,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if existing:
             return {"ok": True, "duplicate": True, "lead_id": existing.id}
         raise
 
-    # ── Deliver to active clients (not admin) ────────────────
-    recipients = (await session.execute(
-        select(ClientRecipient).where(
-            ClientRecipient.funnel_form_id == funnel.id,
-            ClientRecipient.status == RecipientStatus.active.value,
+    recipients = (
+        await session.execute(
+            select(ClientRecipient).where(
+                ClientRecipient.funnel_form_id == funnel.id,
+                ClientRecipient.status == RecipientStatus.active.value,
+            )
         )
-    )).scalars().all()
+    ).scalars().all()
+
+    if not recipients:
+        await notify_admins(
+            session,
+            bot,
+            (
+                f"Lead #{lead.id} was saved, but funnel has no active recipients.\n\n"
+                f"Funnel: <b>{funnel.form_name}</b>\n"
+                f"Tag: {funnel.tag or '-'}\n"
+                f"Name: {lead.full_name or '-'}\n"
+                f"Phone: {lead.phone or '-'}"
+            ),
+        )
 
     errors: list[str] = []
     recipients_ok = 0
@@ -146,13 +176,15 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
                 err_msg = str(e)[:200]
                 errors.append(f"recip:{recipient.telegram_user_id}:{e}")
 
-        session.add(LeadDeliveryHistory(
-            lead_id=lead.id,
-            recipient_telegram_id=recipient.telegram_user_id,
-            delivery_type=DeliveryType.new.value,
-            status=status,
-            error_message=err_msg,
-        ))
+        session.add(
+            LeadDeliveryHistory(
+                lead_id=lead.id,
+                recipient_telegram_id=recipient.telegram_user_id,
+                delivery_type=DeliveryType.new.value,
+                status=status,
+                error_message=err_msg,
+            )
+        )
 
     lead.delivered_clients = recipients_ok > 0
     lead.delivered_telegram = recipients_ok > 0
@@ -161,25 +193,22 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
 
     await session.flush()
 
-    # ── Notify admin ONLY if there are delivery errors ───────
-    if errors and bot and ADMIN_IDS:
-        err_preview = errors[0][:120]
-        for admin_id in ADMIN_IDS:
-            try:
-                await bot.send_message(
-                    admin_id,
-                    f"⚠️ <b>Ошибка доставки лида #{lead.id}</b>\n\n"
-                    f"Воронка: {funnel.form_name}\n"
-                    f"Ошибка: {err_preview}\n\n"
-                    f"Открой <b>Лиды → Ошибки</b> для деталей.",
-                )
-            except Exception:
-                pass
+    if errors:
+        err_preview = errors[0][:180]
+        await notify_admins(
+            session,
+            bot,
+            (
+                f"Lead #{lead.id} delivery failed.\n\n"
+                f"Funnel: <b>{funnel.form_name}</b>\n"
+                f"Tag: {funnel.tag or '-'}\n"
+                f"Error: <code>{err_preview}</code>\n\n"
+                f"Open bot: <b>Leads -> Errors</b>"
+            ),
+        )
 
     return {"ok": True, "lead_id": lead.id}
 
-
-# ── Send old leads (backfill) ────────────────────────────────
 
 async def send_old_leads_to_recipient(
     session: AsyncSession,
@@ -192,7 +221,7 @@ async def send_old_leads_to_recipient(
 ) -> tuple[int, int]:
     """
     Send old leads to a single recipient.
-    Skips leads already delivered (unless force=True).
+    Skips leads already delivered unless force=True.
     Returns (sent_count, skipped_or_error_count).
     """
     sent = 0
@@ -200,13 +229,15 @@ async def send_old_leads_to_recipient(
 
     for lead in leads:
         if not force:
-            already = (await session.execute(
-                select(LeadDeliveryHistory).where(
-                    LeadDeliveryHistory.lead_id == lead.id,
-                    LeadDeliveryHistory.recipient_telegram_id == recipient.telegram_user_id,
-                    LeadDeliveryHistory.status == DeliveryStatus.sent.value,
+            already = (
+                await session.execute(
+                    select(LeadDeliveryHistory).where(
+                        LeadDeliveryHistory.lead_id == lead.id,
+                        LeadDeliveryHistory.recipient_telegram_id == recipient.telegram_user_id,
+                        LeadDeliveryHistory.status == DeliveryStatus.sent.value,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if already:
                 skipped += 1
                 continue
@@ -223,30 +254,32 @@ async def send_old_leads_to_recipient(
             err_msg = str(e)[:200]
             skipped += 1
 
-        # Upsert delivery log
-        existing_log = (await session.execute(
-            select(LeadDeliveryHistory).where(
-                LeadDeliveryHistory.lead_id == lead.id,
-                LeadDeliveryHistory.recipient_telegram_id == recipient.telegram_user_id,
-                LeadDeliveryHistory.delivery_type == DeliveryType.backfill.value,
+        existing_log = (
+            await session.execute(
+                select(LeadDeliveryHistory).where(
+                    LeadDeliveryHistory.lead_id == lead.id,
+                    LeadDeliveryHistory.recipient_telegram_id == recipient.telegram_user_id,
+                    LeadDeliveryHistory.delivery_type == DeliveryType.backfill.value,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
 
         if existing_log:
             existing_log.status = status
             existing_log.error_message = err_msg
         else:
-            session.add(LeadDeliveryHistory(
-                lead_id=lead.id,
-                recipient_telegram_id=recipient.telegram_user_id,
-                delivery_type=DeliveryType.backfill.value,
-                status=status,
-                error_message=err_msg,
-            ))
+            session.add(
+                LeadDeliveryHistory(
+                    lead_id=lead.id,
+                    recipient_telegram_id=recipient.telegram_user_id,
+                    delivery_type=DeliveryType.backfill.value,
+                    status=status,
+                    error_message=err_msg,
+                )
+            )
 
         if delay:
             await asyncio.sleep(delay)
 
     await session.flush()
     return sent, skipped
-

@@ -1,10 +1,10 @@
-# ── Python cache ──────────────────────────────────────────────────────────────
+# Python cache
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 
-# ── Test cache ─────────────────────────────────────────────────────────────────
+# Test cache
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -12,43 +12,47 @@ htmlcov/
 .coverage
 coverage.xml
 
-# ── Virtual environments ───────────────────────────────────────────────────────
+# Virtual environments
 .venv/
 venv/
 env/
 ENV/
 
-# ── Secrets / environment ──────────────────────────────────────────────────────
+# Secrets and local environment
 .env
 *.env
 
-# ── Databases ─────────────────────────────────────────────────────────────────
+# Runtime data
+runtime/
+logs/
+backups/
+exports/
+temp/
+*.log
+*.pid
+
+# Databases
 *.db
 *.sqlite
 *.sqlite3
-backups/
 
-# ── Logs & exports ────────────────────────────────────────────────────────────
-*.log
-logs/
-exports/
-temp/
+# Local binaries downloaded by APEX.bat
+ngrok.exe
+ngrok.zip
 
-# ── IDE ───────────────────────────────────────────────────────────────────────
+# IDE / OS
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ── Build ─────────────────────────────────────────────────────────────────────
+# Build
 dist/
 build/
 *.egg-info/
 
-# ── Alembic: migration files ARE committed; only ignore compiled cache ─────────
+# Alembic migration files are committed; only ignore compiled cache.
 alembic/versions/__pycache__/

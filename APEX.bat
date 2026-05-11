@@ -11,6 +11,13 @@ set "REPO_URL=https://github.com/averysultan3-creator/ApexNotification.git"
 set "INSTALL_DIR=D:\ApexNotification"
 if not exist "D:\" set "INSTALL_DIR=%SystemDrive%\ApexNotification"
 
+:: Optional one-file bootstrap secrets.
+:: Leave empty for safe mode: Setup opens .env and asks ngrok token.
+:: Fill only in your private server copy if you want fully unattended setup.
+set "BOOTSTRAP_BOT_TOKEN="
+set "BOOTSTRAP_ADMIN_IDS="
+set "BOOTSTRAP_NGROK_TOKEN="
+
 cd /d "!DIR!"
 
 :: If this single BAT was copied to an empty server folder, bootstrap the project.
@@ -83,7 +90,10 @@ if "%~1"=="1" goto do_setup
 if "%~1"=="2" goto do_start
 if "%~1"=="3" goto do_stop
 if "%~1"=="4" goto do_restart
+if "%~1"=="5" goto do_status
+if "%~1"=="6" goto do_logs
 if "%~1"=="7" goto do_watchdog
+if "%~1"=="8" goto do_autostart
 if "%~1"=="9" goto do_update
 
 :menu
@@ -239,8 +249,13 @@ if not exist "!DIR!\.env" (
         echo [SETUP] Default .env created.
     )
     echo.
-    echo [!] Fill BOT_TOKEN and ADMIN_IDS in .env, then save and close Notepad.
-    start /wait notepad "!DIR!\.env"
+    if not "!BOOTSTRAP_BOT_TOKEN!"=="" powershell -NoProfile -Command "$p='!DIR!\.env'; $e=Get-Content $p -Raw; $e=[regex]::Replace($e,'(?m)^BOT_TOKEN=.*','BOT_TOKEN=!BOOTSTRAP_BOT_TOKEN!'); [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false))"
+    if not "!BOOTSTRAP_ADMIN_IDS!"=="" powershell -NoProfile -Command "$p='!DIR!\.env'; $e=Get-Content $p -Raw; $e=[regex]::Replace($e,'(?m)^ADMIN_IDS=.*','ADMIN_IDS=!BOOTSTRAP_ADMIN_IDS!'); [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false))"
+    powershell -NoProfile -Command "$e=(Get-Content '!DIR!\.env' -Raw); if($e -match 'BOT_TOKEN=\s*\r?\n'){exit 1} else {exit 0}"
+    if errorlevel 1 (
+        echo [!] Fill BOT_TOKEN and ADMIN_IDS in .env, then save and close Notepad.
+        start /wait notepad "!DIR!\.env"
+    )
     powershell -NoProfile -Command "$e=(Get-Content '!DIR!\.env' -Raw); if($e -match 'BOT_TOKEN=\s*\r?\n'){Write-Host '[WARN] BOT_TOKEN is still empty! Bot will not work.'} else {Write-Host '[OK] BOT_TOKEN is set.'}"
 ) else (
     echo [OK] .env exists.
@@ -280,7 +295,8 @@ echo [OK] Database up to date.
 :: ngrok authtoken
 if defined NGROK_EXE (
     echo.
-    set /p "NGROK_TOKEN=Enter ngrok authtoken (Enter to skip): "
+    set "NGROK_TOKEN=!BOOTSTRAP_NGROK_TOKEN!"
+    if "!NGROK_TOKEN!"=="" set /p "NGROK_TOKEN=Enter ngrok authtoken (Enter to skip): "
     if not "!NGROK_TOKEN!"=="" (
         "!NGROK_EXE!" config add-authtoken "!NGROK_TOKEN!"
         echo [OK] ngrok authtoken saved.
@@ -486,6 +502,7 @@ if not errorlevel 1 set "SERVER_OK=1"
 
 if "!SERVER_OK!"=="1" (
     set "WD_FAIL_COUNT=0"
+    call :wd_public_check
     if !WD_LOOP! GEQ 20 (
         set "WD_LOOP=0"
         call :wd_check_update
@@ -513,6 +530,38 @@ echo [%date% %time%] Server restarted (attempt !WD_FAIL_COUNT!). >> "!DIR!\logs\
 
 timeout /t 60 /nobreak >nul
 goto watchdog_loop
+
+:: Subroutine: check public URL / ngrok tunnel.
+:wd_public_check
+set "PUBLIC_BASE="
+for /f "tokens=1,* delims==" %%a in ('findstr /b /i "PUBLIC_BASE_URL=" "!DIR!\.env" 2^>nul') do set "PUBLIC_BASE=%%b"
+if "!PUBLIC_BASE!"=="" exit /b 0
+echo !PUBLIC_BASE! | findstr /i "localhost 127.0.0.1" >nul && exit /b 0
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -Uri '!PUBLIC_BASE!/health' -Headers @{'ngrok-skip-browser-warning'='1'} -UseBasicParsing -TimeoutSec 8; if($r.StatusCode -eq 200){exit 0}else{exit 1} } catch { exit 1 }" >nul 2>&1
+if not errorlevel 1 exit /b 0
+
+echo [%date% %time%] Public health fail: !PUBLIC_BASE! - restarting ngrok... >> "!DIR!\logs\watchdog.log"
+if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Public URL is DOWN. Restarting ngrok and updating PUBLIC_BASE_URL." >nul 2>&1
+taskkill /im ngrok.exe /f >nul 2>&1
+
+set "NGROK_EXE="
+for /f "tokens=*" %%i in ('where ngrok 2^>nul') do set "NGROK_EXE=%%i"
+if "!NGROK_EXE!"=="" if exist "!DIR!\ngrok.exe" set "NGROK_EXE=!DIR!\ngrok.exe"
+if "!NGROK_EXE!"=="" exit /b 0
+
+for /f "tokens=2 delims==" %%v in ('findstr /i "^WEB_PORT" "!DIR!\.env" 2^>nul') do set "WEB_PORT=%%v"
+if "!WEB_PORT!"=="" set "WEB_PORT=8000"
+start "ngrok" /min "!NGROK_EXE!" http !WEB_PORT!
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$url=$null; for($i=0;$i -lt 20;$i++){ try{$t=(Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -TimeoutSec 2).tunnels | Select-Object -First 1; if($t.public_url){$url=$t.public_url; break}}catch{}; Start-Sleep -Seconds 1 }; if($url){ $p='!DIR!\.env'; $e=Get-Content $p -Raw; $e=[regex]::Replace($e,'(?m)^PUBLIC_BASE_URL=.*','PUBLIC_BASE_URL='+$url); [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false)); exit 0 } else { exit 1 }" >nul 2>&1
+if not errorlevel 1 (
+    echo [%date% %time%] Public URL recovered and .env updated. >> "!DIR!\logs\watchdog.log"
+    if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Public URL recovered. PUBLIC_BASE_URL was updated." >nul 2>&1
+) else (
+    echo [%date% %time%] Failed to recover public URL. >> "!DIR!\logs\watchdog.log"
+)
+exit /b 0
 
 :: Subroutine: auto-update from GitHub
 :wd_check_update
@@ -559,7 +608,7 @@ goto menu
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$a=New-ScheduledTaskAction -Execute '!DIR!\APEX.bat' -Argument '7'; ^
      $t=New-ScheduledTaskTrigger -AtLogOn; ^
-     $s=New-ScheduledTaskSettingsSet -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 2) -ExecutionTimeLimit ([TimeSpan]::Zero); ^
+     $s=New-ScheduledTaskSettingsSet -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 2); ^
      Register-ScheduledTask -TaskName 'ApexLeadRouter' -Action $a -Trigger $t -Settings $s -RunLevel Highest -Force | Out-Null; ^
      Write-Host '[OK] Watchdog autostart registered. It starts server and keeps it alive.'"
 echo.

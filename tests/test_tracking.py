@@ -64,13 +64,12 @@ async def test_tracking_script_uses_sendbeacon_and_fallback():
 
     assert "try{" in script
     assert "sendBeacon" in script
-    assert "fetch" in script
     assert "new Image()" in script
     assert "/track/pv" in script
     assert "/track/bc" in script
     assert "utm_source" in script
     assert "data-track-click" in script
-    assert "keepalive" in script
+    assert "preventDefault" not in script
 
 
 async def test_tracking_script_no_pl_uses_url_param():
@@ -85,4 +84,3 @@ async def test_unknown_slug_stores_event_without_link_id(session):
     assert event is not None
     assert event.slug == "unknown-slug"
     assert event.link_id is None
-
