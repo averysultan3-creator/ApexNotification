@@ -626,6 +626,7 @@ async def funnel_checkconnection(callback: CallbackQuery, session: AsyncSession)
         "telegram": "@test_conn",
         "lead_created_time": None,
         "raw": {"source": "checkconnection"},
+        "_apex_test": True,  # do NOT create lead or deliver to clients
     }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -636,8 +637,7 @@ async def funnel_checkconnection(callback: CallbackQuery, session: AsyncSession)
             )
         body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         if r.status_code == 200 and body.get("ok"):
-            dup = " (дубль)" if body.get("duplicate") else ""
-            lines.append(f"✅ Тест-лид доставлен{dup}")
+            lines.append("✅ Тест-лид принят (без доставки клиентам)")
         else:
             lines.append(f"❌ Тест-лид → {r.status_code} {r.text[:80]}")
             all_ok = False

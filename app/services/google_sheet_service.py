@@ -134,6 +134,10 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
     if funnel.status != "active":
         return {"ok": False, "error": "funnel_paused"}
 
+    # Test-only validation (checkconnection health check): validate auth but do NOT create lead or deliver
+    if payload.get("_apex_test"):
+        return {"ok": True, "test": True, "funnel_name": funnel.form_name}
+
     existing = (
         await session.execute(
             select(Lead).where(
@@ -171,8 +175,7 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
 
     # Clean phone prefix added by some FB/GSheet exports ("p:", "ph:", "tel:")
     _phone = str(payload.get("phone") or "").strip()
-    import re as _re
-    _phone = _re.sub(r'^(p:|ph:|tel:)', '', _phone, flags=_re.IGNORECASE).strip() or None
+    _phone = re.sub(r'^(p:|ph:|tel:)', '', _phone, flags=re.IGNORECASE).strip() or None
 
     lead = Lead(
         funnel_form_id=funnel.id,

@@ -124,6 +124,25 @@ async def test_google_sheet_rejects_bad_payload(session):
     assert result == {"ok": False, "error": "invalid_funnel_id"}
 
 
+async def test_apex_test_flag_does_not_create_lead(session):
+    """_apex_test=True must return ok without saving a lead (checkconnection safety)."""
+    form = await create_funnel_form(session, form_name="ConnCheck", fb_form_id="fb-cc")
+    payload = {
+        "secret": form.join_code,
+        "funnel_id": form.id,
+        "external_lead_id": "test_check_123456",
+        "full_name": "Connection Test",
+        "phone": "+10000000001",
+        "_apex_test": True,
+    }
+    result = await handle_google_sheet_lead(session, None, payload)
+    assert result.get("ok") is True
+    assert result.get("test") is True
+    # No lead should be stored in DB
+    rows = (await session.execute(select(Lead).where(Lead.funnel_form_id == form.id))).scalars().all()
+    assert len(rows) == 0
+
+
 async def test_normalize_lead_data():
     normalized = normalize_lead_data(
         {
