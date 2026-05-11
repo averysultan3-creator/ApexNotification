@@ -37,7 +37,7 @@ async def start(message: Message, session: AsyncSession, is_admin: bool = False)
                 form = await get_form_by_join_code(session, form_id, join_code)
                 if form:
                     user = message.from_user
-                    recipient, is_new = await get_or_create_recipient(
+                    recipient, is_new, is_reactivation = await get_or_create_recipient(
                         session,
                         funnel_form_id=form.id,
                         telegram_user_id=user.id,
@@ -52,11 +52,13 @@ async def start(message: Message, session: AsyncSession, is_admin: bool = False)
                             "Теперь вы будете получать новые заявки автоматически."
                         )
                         # Auto-send all old leads to this new recipient
+                        # force=True for re-activations: delivery history already exists
                         try:
                             old_leads = await list_leads_by_funnel(session, form.id)
                             if old_leads:
                                 sent, _skipped = await send_old_leads_to_recipient(
-                                    session, message.bot, recipient, old_leads, delay=0.15
+                                    session, message.bot, recipient, old_leads,
+                                    force=is_reactivation, delay=0.15
                                 )
                                 if sent:
                                     await message.answer(

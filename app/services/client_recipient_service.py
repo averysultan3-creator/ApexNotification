@@ -14,7 +14,12 @@ async def get_or_create_recipient(
     telegram_user_id: int,
     telegram_username: str | None = None,
     first_name: str | None = None,
-) -> tuple[ClientRecipient, bool]:
+) -> tuple[ClientRecipient, bool, bool]:
+    """
+    Returns (recipient, is_new, is_reactivation).
+    is_new=True on first join OR re-join after removal.
+    is_reactivation=True only when previously disabled recipient is re-joining.
+    """
     existing = (await session.execute(
         select(ClientRecipient).where(
             ClientRecipient.funnel_form_id == funnel_form_id,
@@ -23,15 +28,15 @@ async def get_or_create_recipient(
     )).scalar_one_or_none()
     if existing:
         if existing.status != RecipientStatus.active.value:
-            # Re-activating a previously removed recipient — treat as new so old leads are sent
+            # Re-activating a previously removed recipient
             existing.status = RecipientStatus.active.value
             if telegram_username:
                 existing.telegram_username = telegram_username
             if first_name:
                 existing.first_name = first_name
             await session.flush()
-            return existing, True  # is_new=True → triggers old leads delivery
-        return existing, False
+            return existing, True, True  # is_new=True, is_reactivation=True
+        return existing, False, False
     recipient = ClientRecipient(
         funnel_form_id=funnel_form_id,
         telegram_user_id=telegram_user_id,
@@ -42,7 +47,7 @@ async def get_or_create_recipient(
     session.add(recipient)
     await session.flush()
     await session.refresh(recipient)
-    return recipient, True
+    return recipient, True, False  # is_new=True, is_reactivation=False
 
 
 async def list_recipients(session: AsyncSession, funnel_form_id: int) -> list[ClientRecipient]:
