@@ -105,6 +105,14 @@ function sendNewLeads() {
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
+
+    // Skip completely empty rows (no phone AND no name)
+    var hasPhone = _getField(headers, row, ["phone_number", "phone", "Phone", "mobile"]);
+    var hasName = _getField(headers, row, ["full_name", "full name", "Full Name", "name", "Name"]);
+    if (!hasPhone && !hasName) {
+      continue;
+    }
+
     var externalId = _getField(headers, row, ["id", "lead_id", "leadId", "ID", "Lead ID"]);
     if (!externalId) {
       externalId = "row_" + (i + 2);
