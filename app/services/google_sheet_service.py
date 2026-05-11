@@ -25,6 +25,36 @@ from app.utils.formatters import format_lead_for_client
 logger = logging.getLogger(__name__)
 
 
+_HANDLE_COL_KEYWORDS = [
+    "telegram", "tg", "ник", "nick", "нік", "handle",
+    "username", "instagram", "insta", "ig", "соц",
+]
+
+
+def _find_handle_in_raw(raw: dict) -> str:
+    """
+    Scan all columns in raw payload.
+    Priority 1: column name contains telegram/tg/nick/handle keywords.
+    Priority 2: any cell value that looks like @handle or t.me/xxx.
+    """
+    import re
+    fallback = ""
+    for col, val in raw.items():
+        if not val:
+            continue
+        cell = str(val).strip()
+        col_lower = str(col).lower()
+        # Priority 1: column name matches
+        if any(kw in col_lower for kw in _HANDLE_COL_KEYWORDS):
+            if cell:
+                return cell
+        # Priority 2: value looks like a handle
+        if not fallback:
+            if re.match(r'^@[a-zA-Z0-9_.]{2,}', cell) or re.search(r't\.me/', cell, re.IGNORECASE):
+                fallback = cell
+    return fallback
+
+
 async def handle_google_sheet_lead(
     session: AsyncSession,
     bot: Bot | None,
@@ -100,6 +130,14 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
 
     raw_data = payload.get("raw") or {}
 
+    # Extract telegram from payload; fallback to scanning raw columns
+    _telegram = str(payload.get("telegram") or "").strip() or _find_handle_in_raw(raw_data)
+
+    # Clean phone prefix added by some FB/GSheet exports ("p:", "ph:", "tel:")
+    _phone = str(payload.get("phone") or "").strip()
+    import re as _re
+    _phone = _re.sub(r'^(p:|ph:|tel:)', '', _phone, flags=_re.IGNORECASE).strip() or None
+
     lead = Lead(
         funnel_form_id=funnel.id,
         external_lead_id=external_lead_id,
@@ -107,9 +145,9 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
         fb_form_id=str(payload.get("fb_form_id") or ""),
         form_name=str(payload.get("form_name") or "") or funnel.form_name,
         full_name=str(payload.get("full_name") or "") or None,
-        phone=str(payload.get("phone") or "") or None,
+        phone=_phone,
         email=str(payload.get("email") or "") or None,
-        telegram=str(payload.get("telegram") or "") or None,
+        telegram=_telegram or None,
         tag=funnel.tag,
         lead_created_time=lead_created_time,
         raw_data_json=json.dumps(raw_data, ensure_ascii=False),

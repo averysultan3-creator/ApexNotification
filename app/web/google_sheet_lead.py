@@ -20,5 +20,6 @@ async def receive_lead(
     except Exception:
         return {"ok": False, "error": "invalid_json"}
 
+    logger.info("google_sheet payload: %s", payload)
     bot = getattr(request.app.state, "bot", None)
     return await handle_google_sheet_lead(session, bot, payload)
