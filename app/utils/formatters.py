@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from typing import Any
+from zoneinfo import ZoneInfo
+
+# Timezone for displaying lead timestamps to clients/admins.
+# Change to "Europe/Warsaw" etc. if needed.
+_LOCAL_TZ = ZoneInfo("Europe/Kiev")
 
 
 def load_json_list(raw: str | None) -> list[Any]:
@@ -29,7 +34,11 @@ def percent(part: int, total: int) -> float:
 def fmt_dt(value: datetime | None) -> str:
     if not value:
         return "-"
-    return value.strftime("%d.%m.%Y %H:%M")
+    # SQLite stores naive UTC datetimes — convert to local timezone
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    local = value.astimezone(_LOCAL_TZ)
+    return local.strftime("%d.%m.%Y %H:%M")
 
 
 def fmt_date(value: datetime | None) -> str:
@@ -76,7 +85,7 @@ def _lead_core(lead: Any) -> dict[str, str]:
         tag = empty
         funnel_name = empty
 
-    date_val = getattr(lead, "lead_created_time", None) or getattr(lead, "created_at", None)
+    date_val = getattr(lead, "created_at", None) or getattr(lead, "lead_created_time", None)
     return {
         "tag": html_escape(tag),
         "funnel_name": html_escape(funnel_name),
