@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime
 
 from aiogram import Bot
@@ -44,9 +45,14 @@ def _looks_like_handle(val: str) -> bool:
     # Must start with @ OR contain t.me/ OR be a plain word (no : / digits-only)
     if _HANDLE_RE.search(val):
         return True
-    # Plain username: letters/digits/underscores, no colons, no spaces, reasonable length
-    import re as _re
-    if _re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{2,31}$', val) and ':' not in val:
+    # Plain username: letters/digits/underscores, no colons, no spaces, reasonable length.
+    # Require at least one non-alpha char (digit/underscore/dot) to avoid matching
+    # status words like "CREATED", "false", "fb", etc.
+    if (
+        re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{2,31}$', val)
+        and ':' not in val
+        and re.search(r'[0-9_.]', val)
+    ):
         return True
     return False
 
@@ -57,7 +63,6 @@ def _find_handle_in_raw(raw: dict) -> str:
     Priority 1: column name contains telegram/tg/@ keywords (Latin or Cyrillic).
     Priority 2: any cell value that looks like @handle or t.me/xxx.
     """
-    import re
     fallback = ""
     for col, val in raw.items():
         if val is None:
