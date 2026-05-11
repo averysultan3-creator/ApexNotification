@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 title Apex Lead Router
@@ -86,6 +86,9 @@ exit /b 1
 
 :after_bootstrap
 
+:: Set CLI flag when called with argument (no pause/menu after action)
+if not "%~1"=="" set "APEX_CLI=1"
+
 if "%~1"=="1" goto do_setup
 if "%~1"=="2" goto do_start
 if "%~1"=="3" goto do_stop
@@ -158,13 +161,15 @@ if "!PYTHON_CMD!"=="" (
     if "!PYTHON_CMD!"=="" (
         echo [ERROR] Python not found. Install Python 3.10+ from https://python.org
         echo         Make sure to check "Add Python to PATH" during install.
-        pause & goto menu
+        if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
     )
 )
 !PYTHON_CMD! -c "import sys; exit(0 if sys.version_info>=(3,10) else 1)" 2>nul
 if errorlevel 1 (
     echo [ERROR] Python 3.10+ required. Download from https://python.org/downloads/
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 echo [OK] Python found (!PYTHON_CMD!)
 
@@ -174,7 +179,8 @@ if not exist "!PY!" (
     !PYTHON_CMD! -m venv .venv
     if errorlevel 1 (
         echo [ERROR] venv creation failed. Try running as Administrator.
-        pause & goto menu
+        if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
     )
     echo [OK] venv created.
 ) else (
@@ -190,7 +196,8 @@ if errorlevel 1 (
     "!PY!" -m pip install -r requirements.txt
     if errorlevel 1 (
         echo [ERROR] Dependency install failed. Check internet connection.
-        pause & goto menu
+        if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
     )
 )
 echo [OK] Dependencies installed.
@@ -288,7 +295,8 @@ echo [SETUP] Running database migrations...
 "!PY!" -m alembic upgrade head 2>&1
 if errorlevel 1 (
     echo [ERROR] Alembic migration failed. Check alembic.ini and alembic/ folder.
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 echo [OK] Database up to date.
 
@@ -309,7 +317,8 @@ echo  [OK] Setup done! Next: choose 2 to Start server.
 echo ============================================================
 echo.
 if defined APEX_AUTORUN exit /b 0
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: 2. START
@@ -318,15 +327,18 @@ pause & goto menu
 echo.
 if not exist "!PY!" (
     echo [ERROR] .venv missing. Run Setup ^(1^) first.
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 if not exist "!DIR!\.env" (
     echo [ERROR] .env missing. Run Setup ^(1^) first.
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 powershell -NoProfile -Command "$e=(Get-Content '!DIR!\.env' -Raw); if($e -match 'BOT_TOKEN=\s*\r?\n'){Write-Host '[ERROR] BOT_TOKEN is empty!'; exit 1} else {exit 0}"
 if errorlevel 1 (
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 
 if not exist "!DIR!\runtime" mkdir "!DIR!\runtime"
@@ -340,7 +352,7 @@ if exist "!PID_FILE!" (
         if not errorlevel 1 (
             echo [START] Killing previous instance ^(PID !OLD_PID!^)...
             taskkill /pid !OLD_PID! /f >nul 2>&1
-            timeout /t 2 /nobreak >nul
+            timeout /t 3 /nobreak >nul
         )
     )
     del "!PID_FILE!" >nul 2>&1
@@ -349,10 +361,10 @@ if exist "!PID_FILE!" (
 :: Kill any python main.py to avoid Telegram conflict
 echo [START] Clearing conflicting processes...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
 echo [START] Launching server...
-start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
+powershell -NoProfile -Command "Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -RedirectStandardError '!DIR!\logs\stderr.log'"
 
 :: Start ngrok if available
 set "NGROK_EXE="
@@ -393,7 +405,8 @@ if "!READY!"=="1" (
 )
 echo.
 if defined APEX_AUTORUN exit /b 0
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: 3. STOP
@@ -426,7 +439,8 @@ if "!STOPPED!"=="1" (
     echo [OK] No running server found.
 )
 echo.
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: 4. RESTART
@@ -445,7 +459,7 @@ if exist "!PID_FILE!" (
     del "!PID_FILE!" >nul 2>&1
 )
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 goto do_start
 
 :: ============================================================
@@ -460,22 +474,30 @@ if exist "!PID_FILE!" (
 ) else (
     echo PID file: not found
 )
-powershell -NoProfile -Command "try { $r=Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -UseBasicParsing -TimeoutSec 3; Write-Host ('Health: '+$r.StatusCode+' '+$r.Content) } catch { Write-Host 'Health: DOWN' }"
+powershell -NoProfile -Command "try { $r=Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -UseBasicParsing -TimeoutSec 3; Write-Host ('Health: '+$r.StatusCode+' '+$r.Content) } catch { Write-Host 'Health: DOWN'; if(Test-Path '!DIR!\logs\stderr.log'){ Write-Host '--- Last error (stderr.log) ---'; Get-Content '!DIR!\logs\stderr.log' -Tail 5 } }"
 echo.
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: 6. LOGS
 :: ============================================================
 :do_logs
-if not exist "!DIR!\logs\server.log" (
-    echo No logs\server.log yet.
-    pause & goto menu
-)
-echo --- Last 40 lines of logs\server.log ---
-powershell -NoProfile -Command "Get-Content '!DIR!\logs\server.log' -Tail 40"
 echo.
-pause & goto menu
+if exist "!DIR!\logs\server.log" (
+    echo --- Last 40 lines of logs\server.log ---
+    powershell -NoProfile -Command "Get-Content '!DIR!\logs\server.log' -Tail 40"
+) else (
+    echo [INFO] logs\server.log not found yet ^(server never started?^)
+)
+if exist "!DIR!\logs\stderr.log" (
+    echo.
+    echo --- Last 20 lines of logs\stderr.log ---
+    powershell -NoProfile -Command "Get-Content '!DIR!\logs\stderr.log' -Tail 20"
+)
+echo.
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: 7. WATCHDOG
@@ -526,8 +548,8 @@ if "!WD_FAIL_COUNT!"=="3" (
 )
 
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-timeout /t 2 /nobreak >nul
-start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
+timeout /t 3 /nobreak >nul
+powershell -NoProfile -Command "Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -RedirectStandardError '!DIR!\logs\stderr.log'"
 echo [%date% %time%] Server restarted (attempt !WD_FAIL_COUNT!). >> "!DIR!\logs\watchdog.log"
 
 timeout /t 60 /nobreak >nul
@@ -584,8 +606,8 @@ if !GIT_BEHIND! GTR 0 (
     "!PY!" -m alembic upgrade head >nul 2>&1
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Auto-update applied (!GIT_BEHIND! commits). Server restarting." >nul 2>&1
     powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-    timeout /t 2 /nobreak >nul
-    start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
+    timeout /t 3 /nobreak >nul
+    powershell -NoProfile -Command "Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -RedirectStandardError '!DIR!\logs\stderr.log'"
     echo [%date% %time%] Updated and restarted. >> "!DIR!\logs\watchdog.log"
     echo [WATCHDOG] Update applied, server restarted.
     timeout /t 30 /nobreak >nul
@@ -614,14 +636,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
      Register-ScheduledTask -TaskName 'ApexLeadRouter' -Action $a -Trigger $t -Settings $s -RunLevel Highest -Force | Out-Null; ^
      Write-Host '[OK] Watchdog autostart registered. It starts server and keeps it alive.'"
 echo.
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :autostart_remove
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "Unregister-ScheduledTask -TaskName 'ApexLeadRouter' -Confirm:$false -ErrorAction SilentlyContinue; ^
      Write-Host '[OK] Autostart removed.'"
 echo.
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: 9. UPDATE
@@ -632,7 +656,8 @@ echo [UPDATE] Fetching latest changes from GitHub...
 call :ensure_git
 if errorlevel 1 (
     echo [ERROR] Git is not available and automatic install failed.
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 git fetch origin main 2>&1
 set "GIT_BEHIND=0"
@@ -640,7 +665,8 @@ for /f %%c in ('git rev-list HEAD...origin/main --count 2^>nul') do set "GIT_BEH
 if "!GIT_BEHIND!"=="" set "GIT_BEHIND=0"
 if !GIT_BEHIND! EQU 0 (
     echo [OK] Already up to date.
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 echo [UPDATE] !GIT_BEHIND! new commit(s) available. Pulling...
 if not exist "!DIR!\backups" mkdir "!DIR!\backups"
@@ -654,32 +680,36 @@ git pull origin main
 if errorlevel 1 (
     echo [ERROR] git pull failed. Check connectivity or local conflicts.
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Manual update failed during git pull. Check server console." >nul 2>&1
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 echo [UPDATE] Installing any new dependencies...
 "!PY!" -m pip install -r requirements.txt -q
 if errorlevel 1 (
     echo [ERROR] pip install failed.
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Manual update failed during pip install. Check logs." >nul 2>&1
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 echo [UPDATE] Running migrations...
 "!PY!" -m alembic upgrade head
 if errorlevel 1 (
     echo [ERROR] alembic migration failed. Backup was kept in backups.
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Manual update failed during database migration. Backup was kept." >nul 2>&1
-    pause & goto menu
+    if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 )
 echo [UPDATE] Restarting server...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 if not exist "!DIR!\logs"    mkdir "!DIR!\logs"
-start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
+powershell -NoProfile -Command "Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -RedirectStandardError '!DIR!\logs\stderr.log'"
 timeout /t 8 /nobreak >nul
 powershell -NoProfile -Command "try { $r=Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -UseBasicParsing -TimeoutSec 3; Write-Host '[OK] Server up: '+$r.Content } catch { Write-Host '[WARN] Server not responding yet - check Logs' }"
 echo.
 echo [UPDATE] Done! Applied !GIT_BEHIND! commit(s).
-pause & goto menu
+if defined APEX_CLI (exit /b 0)
+pause ^& goto menu
 
 :: ============================================================
 :: Helpers
