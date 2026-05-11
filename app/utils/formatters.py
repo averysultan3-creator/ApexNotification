@@ -90,23 +90,18 @@ def _lead_core(lead: Any) -> dict[str, str]:
 
 def format_lead_for_client(lead: Any, *, is_archive: bool = False) -> str:
     f = _lead_core(lead)
-    header = "<b>\U0001f4e6 Архивный лид</b>" if is_archive else "<b>\U0001f514 Новый лид</b>"
+    icon = "\U0001f4e6" if is_archive else "\U0001f514"
     lines = [
-        header,
+        f"{icon} <b>{f['funnel_name']}</b> | {f['tag']}",
         "",
-        f"<b>Тег:</b> {f['tag']}",
-        "",
-        f"<b>Воронка:</b>\n{f['funnel_name']}",
-        "",
-        f"<b>Имя:</b>\n{f['full_name']}",
-        "",
-        f"<b>Телефон:</b>\n{f['phone']}",
-        "",
-        f"<b>Telegram:</b>\n{f['telegram']}",
+        f"\U0001f464 {f['full_name']}",
+        f"\U0001f4de {f['phone']}",
     ]
+    if f["telegram"] != "-":
+        lines.append(f"\U0001f4f1 {f['telegram']}")
     if f["email"] != "-":
-        lines += ["", f"<b>Email:</b>\n{f['email']}"]
-    lines += ["", f"<b>Дата:</b>\n{f['date']}"]
+        lines.append(f"\u2709\ufe0f {f['email']}")
+    lines.append(f"\U0001f4c5 {f['date']}")
     return "\n".join(lines)
 
 

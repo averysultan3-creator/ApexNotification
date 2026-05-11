@@ -150,9 +150,9 @@ function _buildPayload(headers, row, externalId) {
     fb_form_id: FB_FORM_ID,
     form_name: _getField(headers, row, ["form_name", "form name", "Form Name", "formName"]) || "",
     full_name: _getField(headers, row, ["full_name", "full name", "Full Name", "name", "Name"]) || "",
-    phone: _getField(headers, row, ["phone_number", "phone", "Phone", "mobile"]) || "",
+    phone: _cleanPhone(_getField(headers, row, ["phone_number", "phone", "Phone", "mobile"]) || ""),
     email: _getField(headers, row, ["email", "Email", "e-mail"]) || "",
-    telegram: _getField(headers, row, ["telegram", "Telegram", "TELEGRAM", "tg", "TG", "Tg", "Телеграм", "телеграм", "ТЕЛЕГРАМ", "Телеграмм", "telegram_username", "tg_username", "username", "Username", "@telegram", "твой_телеграм", "твой телеграм", "Твой телеграм", "Твой Телеграм", "твій_телеграм", "твій телеграм", "Твій телеграм", "Твій Телеграм", "твiй_телеграм", "Нікнейм", "нікнейм", "нікнейм телеграм", "ник", "Ник", "нік", "Нік"]) || "",
+    telegram: _getField(headers, row, ["telegram", "Telegram", "TELEGRAM", "tg", "TG", "Tg", "Телеграм", "телеграм", "ТЕЛЕГРАМ", "Телеграмм", "telegram_username", "tg_username", "username", "Username", "@telegram", "твой_телеграм", "твой телеграм", "Твой телеграм", "Твой Телеграм", "твій_телеграм", "твій телеграм", "Твій телеграм", "Твій Телеграм", "твiй_телеграм", "Нікнейм", "нікнейм", "нікнейм телеграм", "ник", "Ник", "нік", "Нік", "твой_телеграмм", "твой телеграмм", "твой_телеграмм_тег_через_@", 'твой_телеграмм_тег_через_"@"', "Твой Телеграмм", "телеграм тег", "tg_tag", "tg tag", "телеграм_тег"]) || "",
     lead_created_time: _getField(headers, row, ["created_time", "created", "date", "Date"]) || new Date().toISOString(),
     raw: raw
   };
@@ -191,6 +191,12 @@ function _loadSentIds(props) {
     props.deleteProperty("SENT_IDS");
     return {};
   }
+}
+
+function _cleanPhone(phone) {
+  if (!phone) return phone;
+  // Strip prefixes like "p:", "ph:", "tel:" added by some FB exports
+  return phone.replace(/^(p:|ph:|tel:)/i, "").trim();
 }
 
 function _getField(headers, row, names) {
