@@ -49,6 +49,7 @@ class FunnelFSM(StatesGroup):
     sheet_id = State()
     sheet_name = State()
     rename = State()
+    rename_tag = State()
     edit_tag = State()
 
 
@@ -460,11 +461,17 @@ async def funnel_rename_start(
     await state.set_state(FunnelFSM.rename)
     try:
         await callback.message.edit_text(
-            f"<b>✏\ufe0f Переименование</b>\n\nТекущее название: <b>{escape(form.form_name)}</b>\n\nОтправьте новое название или /cancel"
+            f"<b>✏️ Переименование / Тег</b>\n\n"
+            f"Текущее название: <b>{escape(form.form_name)}</b>\n"
+            f"Текущий тег: <b>{escape(form.tag or '—')}</b>\n\n"
+            f"Шаг 1/2. Отправьте новое название или /cancel"
         )
     except Exception:
         await callback.message.answer(
-            f"<b>✏\ufe0f Переименование</b>\n\nТекущее название: <b>{escape(form.form_name)}</b>\n\nОтправьте новое название или /cancel"
+            f"<b>✏️ Переименование / Тег</b>\n\n"
+            f"Текущее название: <b>{escape(form.form_name)}</b>\n"
+            f"Текущий тег: <b>{escape(form.tag or '—')}</b>\n\n"
+            f"Шаг 1/2. Отправьте новое название или /cancel"
         )
     await callback.answer()
 
@@ -491,28 +498,71 @@ async def funnel_rename_apply(
         return
     data = await state.get_data()
     form_id = data.get("rename_form_id")
-    await state.clear()
     if form_id is None:
+        await state.clear()
         await message.answer("Не найдена воронка.", reply_markup=main_menu_kb())
+        return
+    form = await get_form_by_id(session, form_id)
+    if not form:
+        await state.clear()
+        await message.answer("Воронка не найдена.", reply_markup=main_menu_kb())
+        return
+    # Save new name temporarily, ask for tag
+    await state.update_data(rename_new_name=new_name)
+    await state.set_state(FunnelFSM.rename_tag)
+    await message.answer(
+        f"Шаг 2/2. Текущий тег: <b>{escape(form.tag or '—')}</b>\n\n"
+        f"Отправьте новый тег (или <code>-</code> чтобы оставить без изменений, /cancel — отмена)"
+    )
+
+
+@router.message(
+    lambda m: m.text and m.text.strip() == "/cancel",
+    FunnelFSM.rename_tag,
+)
+async def funnel_rename_tag_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Отменено.", reply_markup=main_menu_kb())
+
+
+@router.message(FunnelFSM.rename_tag)
+async def funnel_rename_tag_apply(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    new_tag_input = (message.text or "").strip()
+    data = await state.get_data()
+    form_id = data.get("rename_form_id")
+    new_name = data.get("rename_new_name", "")
+    await state.clear()
+
+    if form_id is None or not new_name:
+        await message.answer("Сессия истекла.", reply_markup=main_menu_kb())
         return
     form = await get_form_by_id(session, form_id)
     if not form:
         await message.answer("Воронка не найдена.", reply_markup=main_menu_kb())
         return
+
     old_name = form.form_name
     form.form_name = new_name
+    # "-" means keep current tag
+    if new_tag_input != "-":
+        form.tag = new_tag_input if new_tag_input else None
     await session.flush()
-    # Notify all recipients about rename
+
+    # Notify recipients if renamed
     recipients = await list_recipients(session, form_id)
-    notify_text = (
-        f"ℹ\ufe0f Воронка переименована:\n"
-        f"<s>{escape(old_name)}</s> → <b>{escape(new_name)}</b>"
-    )
-    for r in recipients:
-        try:
-            await message.bot.send_message(r.telegram_user_id, notify_text)
-        except Exception:
-            pass
+    if old_name != new_name:
+        notify_text = (
+            f"ℹ️ Воронка переименована:\n"
+            f"<s>{escape(old_name)}</s> → <b>{escape(new_name)}</b>"
+        )
+        for r in recipients:
+            try:
+                await message.bot.send_message(r.telegram_user_id, notify_text)
+            except Exception:
+                pass
+
     stats = await funnel_stats_today(session, form_id)
     leads = await list_leads_by_funnel(session, form_id)
     text = format_funnel_card(
@@ -523,15 +573,17 @@ async def funnel_rename_apply(
         errors_today=stats["errors_today"],
         recipients_count=len(recipients),
     )
+    tag_line = f"Тег: <b>{escape(form.tag or '—')}</b>"
     await message.answer(
-        f"✅ Переименовано (уведомлено {len(recipients)} получателей)\n\n{text}",
+        f"✅ Сохранено. {tag_line}\n\n{text}",
         reply_markup=funnel_card_kb(form_id, form.status == "active"),
     )
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("funnel:checkfields:"))
-async def funnel_checkfields(callback: CallbackQuery, session: AsyncSession) -> None:
+@router.callback_query(lambda c: c.data and c.data.startswith("funnel:checkconnection:"))
+async def funnel_checkconnection(callback: CallbackQuery, session: AsyncSession) -> None:
     import httpx
+    from config import PUBLIC_BASE_URL
     form_id = _part_int(callback.data, 2)
     if form_id is None:
         await callback.answer("Bad callback.", show_alert=True)
@@ -540,96 +592,85 @@ async def funnel_checkfields(callback: CallbackQuery, session: AsyncSession) -> 
     if not form:
         await callback.answer("Воронка не найдена.", show_alert=True)
         return
-    await callback.answer()
+    await callback.answer("Проверяю…")
 
-    if not FACEBOOK_PAGE_ACCESS_TOKEN:
-        await callback.message.answer("⚠️ FACEBOOK_PAGE_ACCESS_TOKEN не задан в .env")
-        return
+    lines = [f"<b>🔌 Проверка соединения: {escape(form.form_name)}</b>", ""]
+    all_ok = True
 
-    fb_form_id = form.fb_form_id
-    if fb_form_id.startswith("gsheet_"):
-        await callback.message.answer(
-            f"ℹ️ Воронка <b>{escape(form.form_name)}</b> не привязана к Facebook форме "
-            f"(используется только Google Sheet).",
-            parse_mode="HTML",
-        )
-        return
+    base = PUBLIC_BASE_URL.rstrip("/")
 
-    # --- Fetch form questions from FB Graph API ---
+    # 1. Health check
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(
-                f"https://graph.facebook.com/{FACEBOOK_GRAPH_VERSION}/{fb_form_id}",
-                params={"fields": "name,questions", "access_token": FACEBOOK_PAGE_ACCESS_TOKEN},
-            )
-            data = r.json()
-    except Exception as e:
-        await callback.message.answer(f"⚠️ Ошибка запроса к FB API: {e}")
-        return
-
-    if "error" in data:
-        err = data["error"]
-        await callback.message.answer(
-            f"⚠️ FB API ошибка:\n<code>{escape(err.get('message', str(err)))}</code>",
-            parse_mode="HTML",
-        )
-        return
-
-    questions = data.get("questions") or []
-    form_name_fb = data.get("name", fb_form_id)
-
-    # Map field keys to our fields
-    _MAP = {
-        "full_name": ["full_name", "name", "your_name", "first_name", "last_name"],
-        "phone": ["phone_number", "phone", "mobile"],
-        "email": ["email", "email_address"],
-        "telegram": ["telegram", "tg", "telegram_username", "username"],
-        "tag": ["utm_campaign", "utm_source", "utm_content", "utm_medium", "tag", "ref", "source", "campaign", "label"],
-    }
-    _LABELS = {
-        "full_name": "Имя", "phone": "Телефон", "email": "Email",
-        "telegram": "Telegram", "tag": "Тег",
-    }
-
-    found_keys = {str(q.get("key") or q.get("type") or "").strip().lower() for q in questions}
-    found_labels = {str(q.get("label") or "").strip() for q in questions}
-
-    lines = [f"<b>🔍 Форма:</b> {escape(form_name_fb)}", f"<b>FB Form ID:</b> <code>{fb_form_id}</code>", ""]
-    if not questions:
-        lines.append("⚠️ Поля формы не найдены (возможно нет прав или форма пуста).")
-    else:
-        lines.append("<b>Поля формы → наш маппинг:</b>")
-        for q in questions:
-            key = str(q.get("key") or q.get("type") or "").strip().lower()
-            label = str(q.get("label") or key)
-            mapped_to = None
-            for field, aliases in _MAP.items():
-                if key in aliases:
-                    mapped_to = _LABELS[field]
-                    break
-            icon = "✅" if mapped_to else "—"
-            arrow = f" → <b>{mapped_to}</b>" if mapped_to else ""
-            lines.append(f"{icon} <code>{escape(label)}</code>{arrow}")
-
-        lines.append("")
-        # Check missing critical fields
-        missing = []
-        for field, aliases in _MAP.items():
-            if field in ("tag",):
-                continue
-            matched = any(a in found_keys for a in aliases)
-            if not matched:
-                missing.append(_LABELS[field])
-        if missing:
-            lines.append(f"⚠️ Не захватывается: {', '.join(missing)}")
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{base}/health", headers={"ngrok-skip-browser-warning": "1"})
+        if r.status_code == 200:
+            lines.append(f"✅ Backend /health → {r.status_code}")
         else:
-            lines.append("✅ Все ключевые поля захватываются.")
+            lines.append(f"❌ Backend /health → {r.status_code}")
+            all_ok = False
+    except Exception as e:
+        lines.append(f"❌ Backend /health → {e}")
+        all_ok = False
+
+    # 2. Test lead
+    import time, json
+    test_ext_id = f"test_check_{int(time.time())}"
+    test_payload = {
+        "secret": form.join_code,
+        "funnel_id": form.id,
+        "external_lead_id": test_ext_id,
+        "fb_form_id": form.fb_form_id,
+        "form_name": "checkconnection",
+        "full_name": "Connection Test",
+        "phone": "+10000000001",
+        "telegram": "@test_conn",
+        "lead_created_time": None,
+        "raw": {"source": "checkconnection"},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"{base}/api/google-sheet/lead",
+                json=test_payload,
+                headers={"ngrok-skip-browser-warning": "1"},
+            )
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code == 200 and body.get("ok"):
+            dup = " (дубль)" if body.get("duplicate") else ""
+            lines.append(f"✅ Тест-лид доставлен{dup}")
+        else:
+            lines.append(f"❌ Тест-лид → {r.status_code} {r.text[:80]}")
+            all_ok = False
+    except Exception as e:
+        lines.append(f"❌ Тест-лид → {e}")
+        all_ok = False
+
+    # 3. Ngrok tunnel (if public URL ≠ localhost)
+    import re as _re
+    if _re.search(r'localhost|127\.0\.0\.1', base, _re.I):
+        lines.append("ℹ️ ngrok: локальный URL, туннель не используется")
+    else:
+        lines.append(f"✅ Публичный URL: {base}")
+
+    # 4. Recipients
+    recipients = await list_recipients(session, form_id)
+    active = [r for r in recipients]
+    if active:
+        lines.append(f"✅ Получателей: {len(active)}")
+    else:
+        lines.append("⚠️ Получателей нет — лиды никуда не доставляются")
+
+    lines.append("")
+    lines.append("✅ Всё ОК" if all_ok else "⚠️ Есть проблемы — см. выше")
 
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⬅ Назад", callback_data=f"funnel:card:{form_id}")
     ]])
-    await callback.message.edit_text("\n".join(lines), reply_markup=back_kb, parse_mode="HTML")
+    try:
+        await callback.message.edit_text("\n".join(lines), reply_markup=back_kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer("\n".join(lines), reply_markup=back_kb, parse_mode="HTML")
 
 
 @router.callback_query(lambda c: c.data and (c.data.startswith("funnel:delete:") or c.data.startswith("funnel:archive:")))

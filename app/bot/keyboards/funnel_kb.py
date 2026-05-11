@@ -44,10 +44,9 @@ def funnel_card_kb(form_id: int, is_active: bool) -> InlineKeyboardMarkup:
         ],
         [InlineKeyboardButton(text="👥 Получатели", callback_data=f"funnel:recipients:{form_id}")],
         [
-            InlineKeyboardButton(text="\u270f\ufe0f Переименовать", callback_data=f"funnel:rename:{form_id}"),
-            InlineKeyboardButton(text="\U0001f3f7 Изменить тег", callback_data=f"funnel:edittag:{form_id}"),
+            InlineKeyboardButton(text="\u270f\ufe0f Переименовать / Тег", callback_data=f"funnel:rename:{form_id}"),
         ],
-        [InlineKeyboardButton(text="🔍 Проверить поля формы", callback_data=f"funnel:checkfields:{form_id}")],
+        [InlineKeyboardButton(text="🔌 Проверить соединение", callback_data=f"funnel:checkconnection:{form_id}")],
         [
             InlineKeyboardButton(text="\U0001f4e6 Архивировать", callback_data=f"funnel:archive:{form_id}"),
         ],

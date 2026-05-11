@@ -382,6 +382,11 @@ if defined NGROK_EXE (
     start "ngrok" /min "!NGROK_EXE!" http !WEB_PORT!
     echo [START] ngrok started on port !WEB_PORT! - detecting public URL...
     powershell -NoProfile -Command "$url=$null; for($i=0;$i -lt 15;$i++){ try{$t=(Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -TimeoutSec 2).tunnels | Select-Object -First 1; if($t.public_url){$url=$t.public_url; break}}catch{}; Start-Sleep -Seconds 1 }; if($url){ $p='!DIR!\.env'; $e=Get-Content $p -Raw; if($e -match '(?m)^PUBLIC_BASE_URL='){ $e=[regex]::Replace($e,'(?m)^PUBLIC_BASE_URL=.*','PUBLIC_BASE_URL='+$url) } else { $e += ([char]13+[char]10+'PUBLIC_BASE_URL='+$url+[char]13+[char]10) }; [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false)); Write-Host ('[OK] PUBLIC_BASE_URL='+$url) } else { Write-Host '[WARN] Could not detect ngrok URL. Open http://127.0.0.1:4040' }"
+    :: Restart Python so it picks up the new PUBLIC_BASE_URL from .env
+    echo [START] Restarting server with new public URL...
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    timeout /t 2 /nobreak >nul
+    powershell -NoProfile -Command "Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -RedirectStandardError '!DIR!\logs\stderr.log'"
 ) else (
     echo [INFO] ngrok not found, skipping. Add ngrok.exe to this folder or run Setup.
 )

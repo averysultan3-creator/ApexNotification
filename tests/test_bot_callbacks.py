@@ -36,7 +36,7 @@ def _callbacks(markup: InlineKeyboardMarkup) -> list[str]:
 
 
 def test_keyboard_callbacks_are_short_and_use_current_prefixes():
-    form = SimpleNamespace(id=123, status="active", form_name="Main funnel")
+    form = SimpleNamespace(id=123, status="active", form_name="Main funnel", client_label=None)
     recipient = SimpleNamespace(
         id=456,
         first_name="Client",

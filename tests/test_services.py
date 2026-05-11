@@ -34,7 +34,7 @@ async def test_funnel_form_recipient_and_facebook_lead_delivery(session, monkeyp
         fb_page_id="page-1",
         tag="offer-a",
     )
-    recipient, created = await get_or_create_recipient(
+    recipient, created, _reactivated = await get_or_create_recipient(
         session,
         funnel_form_id=form.id,
         telegram_user_id=777,
