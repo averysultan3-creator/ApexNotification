@@ -1,12 +1,5 @@
 @echo off
 chcp 65001 >nul 2>&1
-:: Keep window alive when opened interactively (double-click / no args)
-if not "%~1"=="" goto skip_keep_open
-if defined APEX_WRAP goto skip_keep_open
-set "APEX_WRAP=1"
-cmd /k "%~f0"
-exit /b 0
-:skip_keep_open
 setlocal enabledelayedexpansion
 title Apex Lead Router
 
@@ -332,7 +325,9 @@ if not exist "!DIR!\.env" (
     pause & goto menu
 )
 powershell -NoProfile -Command "$e=(Get-Content '!DIR!\.env' -Raw); if($e -match 'BOT_TOKEN=\s*\r?\n'){Write-Host '[ERROR] BOT_TOKEN is empty!'; exit 1} else {exit 0}"
-if errorlevel 1 pause & goto menu
+if errorlevel 1 (
+    pause & goto menu
+)
 
 if not exist "!DIR!\runtime" mkdir "!DIR!\runtime"
 if not exist "!DIR!\logs"    mkdir "!DIR!\logs"
