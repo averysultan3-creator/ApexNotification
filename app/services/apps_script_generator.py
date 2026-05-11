@@ -152,7 +152,7 @@ function _buildPayload(headers, row, externalId) {
     full_name: _getField(headers, row, ["full_name", "full name", "Full Name", "name", "Name"]) || "",
     phone: _cleanPhone(_getField(headers, row, ["phone_number", "phone", "Phone", "mobile"]) || ""),
     email: _getField(headers, row, ["email", "Email", "e-mail"]) || "",
-    telegram: _getField(headers, row, ["telegram", "Telegram", "TELEGRAM", "tg", "TG", "Tg", "Телеграм", "телеграм", "ТЕЛЕГРАМ", "Телеграмм", "telegram_username", "tg_username", "username", "Username", "@telegram", "твой_телеграм", "твой телеграм", "Твой телеграм", "Твой Телеграм", "твій_телеграм", "твій телеграм", "Твій телеграм", "Твій Телеграм", "твiй_телеграм", "Нікнейм", "нікнейм", "нікнейм телеграм", "ник", "Ник", "нік", "Нік", "твой_телеграмм", "твой телеграмм", "твой_телеграмм_тег_через_@", 'твой_телеграмм_тег_через_"@"', "Твой Телеграмм", "телеграм тег", "tg_tag", "tg tag", "телеграм_тег"]) || "",
+    telegram: _findHandle(headers, row),
     lead_created_time: _getField(headers, row, ["created_time", "created", "date", "Date"]) || new Date().toISOString(),
     raw: raw
   };
@@ -197,6 +197,35 @@ function _cleanPhone(phone) {
   if (!phone) return phone;
   // Strip prefixes like "p:", "ph:", "tel:" added by some FB exports
   return phone.replace(/^(p:|ph:|tel:)/i, "").trim();
+}
+
+// Smart handle finder: finds @username from any column.
+// Priority: 1) column name looks like "telegram/tg/ник/handle"
+//           2) any cell value that starts with @ or contains t.me/
+function _findHandle(headers, row) {
+  // Priority 1: by column name keywords
+  var nameKeywords = ["telegram", "tg", "ник", "nick", "нік", "handle",
+    "username", "твой", "твій", "instagram", "insta", "ig", "соц"];
+  for (var n = 0; n < nameKeywords.length; n++) {
+    var kw = nameKeywords[n].toLowerCase();
+    for (var h = 0; h < headers.length; h++) {
+      var hdr = String(headers[h] || "").toLowerCase();
+      if (hdr.indexOf(kw) !== -1) {
+        var val = row[h];
+        if (val !== "" && val !== null && val !== undefined) {
+          return String(val).trim();
+        }
+      }
+    }
+  }
+  // Priority 2: any cell that looks like a handle (@xxx or t.me/xxx or https://t.me/xxx)
+  for (var h2 = 0; h2 < row.length; h2++) {
+    var cell = String(row[h2] || "").trim();
+    if (cell.match(/^@[a-zA-Z0-9_.]{2,}/) || cell.match(/t\.me\//i)) {
+      return cell;
+    }
+  }
+  return "";
 }
 
 function _getField(headers, row, names) {
