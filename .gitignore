@@ -21,6 +21,7 @@ ENV/
 # Secrets and local environment
 .env
 *.env
+APEX_SECRETS.txt
 
 # Runtime data
 runtime/

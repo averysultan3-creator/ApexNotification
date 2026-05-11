@@ -46,6 +46,12 @@ git pull --ff-only
 
 :bootstrap_continue
 copy /y "%~f0" "!INSTALL_DIR!\APEX.bat" >nul 2>&1
+:: If APEX_SECRETS.txt sits next to the bat file, use it as .env (fully unattended deploy)
+if exist "%~dp0APEX_SECRETS.txt" (
+    echo [BOOT] Found APEX_SECRETS.txt - copying as .env...
+    copy /y "%~dp0APEX_SECRETS.txt" "!INSTALL_DIR!\.env" >nul 2>&1
+    echo [OK] .env installed from APEX_SECRETS.txt
+)
 cd /d "!INSTALL_DIR!"
 set "DIR=!INSTALL_DIR!"
 set "PY=!INSTALL_DIR!\.venv\Scripts\python.exe"
