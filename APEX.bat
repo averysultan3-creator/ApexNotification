@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 title Apex Lead Router
@@ -338,7 +338,7 @@ if exist "!PID_FILE!" (
     if not "!OLD_PID!"=="" (
         tasklist /fi "pid eq !OLD_PID!" /fo csv /nh 2>nul | findstr /i "python" >nul 2>&1
         if not errorlevel 1 (
-            echo [START] Killing previous instance (PID !OLD_PID!)...
+            echo [START] Killing previous instance ^(PID !OLD_PID!^)...
             taskkill /pid !OLD_PID! /f >nul 2>&1
             timeout /t 2 /nobreak >nul
         )
@@ -348,7 +348,7 @@ if exist "!PID_FILE!" (
 
 :: Kill any python main.py to avoid Telegram conflict
 echo [START] Clearing conflicting processes...
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 
 echo [START] Launching server...
@@ -366,7 +366,7 @@ if defined NGROK_EXE (
     timeout /t 1 /nobreak >nul
     start "ngrok" /min "!NGROK_EXE!" http !WEB_PORT!
     echo [START] ngrok started on port !WEB_PORT! - detecting public URL...
-    powershell -NoProfile -Command "$url=$null; for($i=0;$i -lt 15;$i++){ try{$t=(Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -TimeoutSec 2).tunnels | Select-Object -First 1; if($t.public_url){$url=$t.public_url; break}}catch{}; Start-Sleep -Seconds 1 }; if($url){ $p='!DIR!\.env'; $e=Get-Content $p -Raw; if($e -match '(?m)^PUBLIC_BASE_URL='){ $e=[regex]::Replace($e,'(?m)^PUBLIC_BASE_URL=.*','PUBLIC_BASE_URL='+$url) } else { $e += \"`r`nPUBLIC_BASE_URL=$url`r`n\" }; [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false)); Write-Host ('[OK] PUBLIC_BASE_URL='+$url) } else { Write-Host '[WARN] Could not detect ngrok URL. Open http://127.0.0.1:4040' }"
+    powershell -NoProfile -Command "$url=$null; for($i=0;$i -lt 15;$i++){ try{$t=(Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -TimeoutSec 2).tunnels | Select-Object -First 1; if($t.public_url){$url=$t.public_url; break}}catch{}; Start-Sleep -Seconds 1 }; if($url){ $p='!DIR!\.env'; $e=Get-Content $p -Raw; if($e -match '(?m)^PUBLIC_BASE_URL='){ $e=[regex]::Replace($e,'(?m)^PUBLIC_BASE_URL=.*','PUBLIC_BASE_URL='+$url) } else { $e += ([char]13+[char]10+'PUBLIC_BASE_URL='+$url+[char]13+[char]10) }; [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false)); Write-Host ('[OK] PUBLIC_BASE_URL='+$url) } else { Write-Host '[WARN] Could not detect ngrok URL. Open http://127.0.0.1:4040' }"
 ) else (
     echo [INFO] ngrok not found, skipping. Add ngrok.exe to this folder or run Setup.
 )
@@ -415,7 +415,7 @@ if exist "!PID_FILE!" (
     del "!PID_FILE!" >nul 2>&1
 )
 
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Write-Host ('[STOP] Killing stray PID '+$_.ProcessId); Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Write-Host ('[STOP] Killing stray PID '+$_.ProcessId); Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 
 :: Stop ngrok
 taskkill /im ngrok.exe /f >nul 2>&1 && echo [STOP] ngrok stopped.
@@ -444,7 +444,7 @@ if exist "!PID_FILE!" (
     )
     del "!PID_FILE!" >nul 2>&1
 )
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 goto do_start
 
@@ -525,7 +525,7 @@ if "!WD_FAIL_COUNT!"=="3" (
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Server crashed 3 times in a row. Check logs immediately." >nul 2>&1
 )
 
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
 echo [%date% %time%] Server restarted (attempt !WD_FAIL_COUNT!). >> "!DIR!\logs\watchdog.log"
@@ -583,7 +583,7 @@ if !GIT_BEHIND! GTR 0 (
     "!PY!" -m pip install -r requirements.txt -q >nul 2>&1
     "!PY!" -m alembic upgrade head >nul 2>&1
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Auto-update applied (!GIT_BEHIND! commits). Server restarting." >nul 2>&1
-    powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     timeout /t 2 /nobreak >nul
     start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
     echo [%date% %time%] Updated and restarted. >> "!DIR!\logs\watchdog.log"
@@ -671,7 +671,7 @@ if errorlevel 1 (
     pause & goto menu
 )
 echo [UPDATE] Restarting server...
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
 if not exist "!DIR!\logs"    mkdir "!DIR!\logs"
 start "Apex Lead Router Server" /min cmd /c ""!PY!" -u main.py all 2> "!DIR!\logs\stderr.log""
