@@ -50,19 +50,81 @@ function setup() {
 }
 
 function testConnection() {
+  var results = [];
+  var allOk = true;
+
+  // 1. Backend health
   try {
     var resp = UrlFetchApp.fetch(BACKEND_HEALTH_URL, {
       method: "get",
       headers: {"ngrok-skip-browser-warning": "1"},
       muteHttpExceptions: true,
-      followRedirects: true
+      followRedirects: true,
+      deadline: 10
     });
-    Logger.log("Health: " + resp.getResponseCode() + " " + resp.getContentText());
-    return resp.getResponseCode() === 200;
+    var ok = resp.getResponseCode() === 200;
+    results.push((ok ? "✅" : "❌") + " Backend /health → " + resp.getResponseCode() + " " + resp.getContentText().substring(0, 80));
+    if (!ok) allOk = false;
   } catch (err) {
-    Logger.log("Health failed: " + err);
-    return false;
+    results.push("❌ Backend /health → " + err);
+    allOk = false;
   }
+
+  // 2. Google Sheet read
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      results.push("❌ Sheet '" + SHEET_NAME + "' not found");
+      allOk = false;
+    } else {
+      var lastRow = sheet.getLastRow();
+      var lastCol = sheet.getLastColumn();
+      var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+      results.push("✅ Sheet '" + SHEET_NAME + "' → " + lastRow + " rows, " + lastCol + " cols");
+      results.push("   Headers: " + headers.slice(0, 8).join(", ") + (lastCol > 8 ? "..." : ""));
+    }
+  } catch (err) {
+    results.push("❌ Sheet read → " + err);
+    allOk = false;
+  }
+
+  // 3. Send test lead
+  try {
+    var testPayload = {
+      secret: SECRET,
+      funnel_id: FUNNEL_ID,
+      external_lead_id: "test_conn_" + Date.now(),
+      fb_form_id: FB_FORM_ID,
+      form_name: "testConnection",
+      full_name: "Connection Test",
+      phone: "+10000000001",
+      telegram: "@test_conn",
+      lead_created_time: new Date().toISOString(),
+      raw: {source: "testConnection"}
+    };
+    var sent = _sendLead(testPayload);
+    results.push((sent ? "✅" : "❌") + " Test lead delivery → " + (sent ? "OK" : "FAILED"));
+    if (!sent) allOk = false;
+  } catch (err) {
+    results.push("❌ Test lead → " + err);
+    allOk = false;
+  }
+
+  // 4. SENT_IDS storage
+  try {
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty("_test_apex", "1");
+    props.deleteProperty("_test_apex");
+    results.push("✅ Script properties (storage) → OK");
+  } catch (err) {
+    results.push("❌ Script properties → " + err);
+    allOk = false;
+  }
+
+  var summary = (allOk ? "✅ ALL OK" : "⚠️ SOME CHECKS FAILED") + "\n\n" + results.join("\n");
+  Logger.log(summary);
+  SpreadsheetApp.getUi().alert("Apex Connection Test", summary, SpreadsheetApp.getUi().ButtonSet.OK);
+  return allOk;
 }
 
 function sendTestLead() {

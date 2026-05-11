@@ -587,7 +587,12 @@ start "ngrok" /min "!NGROK_EXE!" http !WEB_PORT!
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$url=$null; for($i=0;$i -lt 20;$i++){ try{$t=(Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -TimeoutSec 2).tunnels | Select-Object -First 1; if($t.public_url){$url=$t.public_url; break}}catch{}; Start-Sleep -Seconds 1 }; if($url){ $p='!DIR!\.env'; $e=Get-Content $p -Raw; $e=[regex]::Replace($e,'(?m)^PUBLIC_BASE_URL=.*','PUBLIC_BASE_URL='+$url); [IO.File]::WriteAllText($p,$e,[Text.UTF8Encoding]::new($false)); exit 0 } else { exit 1 }" >nul 2>&1
 if not errorlevel 1 (
     echo [%date% %time%] Public URL recovered and .env updated. >> "!DIR!\logs\watchdog.log"
-    if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Public URL recovered. PUBLIC_BASE_URL was updated." >nul 2>&1
+    if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Public URL recovered. PUBLIC_BASE_URL was updated. Server restarting." >nul 2>&1
+    :: Restart Python server so it picks up the new PUBLIC_BASE_URL from .env
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    timeout /t 3 /nobreak >nul
+    powershell -NoProfile -Command "Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -RedirectStandardError '!DIR!\logs\stderr.log'"
+    echo [%date% %time%] Server restarted with new PUBLIC_BASE_URL. >> "!DIR!\logs\watchdog.log"
 ) else (
     echo [%date% %time%] Failed to recover public URL. >> "!DIR!\logs\watchdog.log"
 )

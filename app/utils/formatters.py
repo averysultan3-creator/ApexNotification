@@ -101,7 +101,7 @@ def format_lead_for_client(lead: Any, *, is_archive: bool = False) -> str:
     f = _lead_core(lead)
     icon = "\U0001f4e6" if is_archive else "\U0001f514"
     lines = [
-        f"{icon} <b>{f['funnel_name']}</b> | {f['tag']}",
+        f"{icon} <b>{f['funnel_name']}</b>",
         "",
         f"\U0001f464 {f['full_name']}",
         f"\U0001f4de {f['phone']}",

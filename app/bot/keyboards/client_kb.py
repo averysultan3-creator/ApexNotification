@@ -8,7 +8,7 @@ def client_cabinet_kb(funnels: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for form in funnels:
         builder.row(InlineKeyboardButton(
-            text=form.form_name,
+            text=form.client_label or form.form_name,
             callback_data=f"cl:funnel:{form.id}",
         ))
     return builder.as_markup()
