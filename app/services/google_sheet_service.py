@@ -165,8 +165,9 @@ async def _process(session: AsyncSession, bot: Bot | None, payload: dict) -> dic
 
     raw_data = payload.get("raw") or {}
 
-    # Extract telegram from payload; fallback to scanning raw columns
-    _telegram = str(payload.get("telegram") or "").strip() or _find_handle_in_raw(raw_data)
+    # Extract telegram from payload; validate it looks like a handle, then fallback to raw scan
+    _telegram_raw = str(payload.get("telegram") or "").strip()
+    _telegram = (_telegram_raw if _looks_like_handle(_telegram_raw) else "") or _find_handle_in_raw(raw_data)
 
     # Clean phone prefix added by some FB/GSheet exports ("p:", "ph:", "tel:")
     _phone = str(payload.get("phone") or "").strip()

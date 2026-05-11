@@ -200,28 +200,27 @@ function _cleanPhone(phone) {
 }
 
 // Smart handle finder: finds @username from any column.
-// Priority: 1) column name contains telegram/tg/@ keywords (any language)
+// Priority: 1) column name contains telegram/handle/@ keywords — value MUST look like a handle
 //           2) any cell value that starts with @ or contains t.me/
 function _findHandle(headers, row) {
-  // Priority 1: by column name keywords (EN + RU/UA + symbol @)
   var nameKeywords = [
-    "telegram", "tg", "handle", "username", "instagram", "insta", "ig",
-    "телеграм", "телегр", "тг", "тег", "ник", "нік", "nick",
-    "твой", "твій", "соц", "@"
+    "telegram", "handle", "username",
+    "телеграм", "телегр", "тг", "тег", "ник", "нік",
+    "твой", "твій", "@"
   ];
   for (var n = 0; n < nameKeywords.length; n++) {
     var kw = nameKeywords[n].toLowerCase();
     for (var h = 0; h < headers.length; h++) {
       var hdr = String(headers[h] || "").toLowerCase();
       if (hdr.indexOf(kw) !== -1) {
-        var val = row[h];
-        if (val !== "" && val !== null && val !== undefined) {
-          return String(val).trim();
+        var val = String(row[h] || "").trim();
+        if (val && _looksLikeHandle(val)) {
+          return val;
         }
       }
     }
   }
-  // Priority 2: any cell that looks like a handle (@xxx or t.me/xxx or https://t.me/xxx)
+  // Priority 2: any cell that looks like a handle (@xxx or t.me/xxx)
   for (var h2 = 0; h2 < row.length; h2++) {
     var cell = String(row[h2] || "").trim();
     if (cell.match(/^@[a-zA-Z0-9_.]{2,}/) || cell.match(/t\.me\//i)) {
@@ -229,6 +228,16 @@ function _findHandle(headers, row) {
     }
   }
   return "";
+}
+
+// Returns true if val looks like a real telegram handle, not a FB ID or status word.
+function _looksLikeHandle(val) {
+  if (!val) return false;
+  // @handle or t.me/ link
+  if (val.match(/^@[a-zA-Z0-9_.]{2,}/) || val.match(/t\.me\//i)) return true;
+  // Plain username: starts with letter, contains at least one digit/underscore/dot
+  if (val.match(/^[a-zA-Z][a-zA-Z0-9_.]{2,31}$/) && /[0-9_.]/.test(val) && val.indexOf(":") === -1) return true;
+  return false;
 }
 
 function _getField(headers, row, names) {
