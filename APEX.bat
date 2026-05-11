@@ -312,6 +312,11 @@ echo [OK] Database up to date.
 if defined NGROK_EXE (
     echo.
     set "NGROK_TOKEN=!BOOTSTRAP_NGROK_TOKEN!"
+    :: Read from .env if not set via bootstrap
+    if "!NGROK_TOKEN!"=="" (
+        for /f "tokens=1,* delims==" %%a in ('findstr /b /i "NGROK_AUTHTOKEN=" "!DIR!\.env" 2^>nul') do set "NGROK_TOKEN=%%b"
+        set "NGROK_TOKEN=!NGROK_TOKEN: =!"
+    )
     if "!NGROK_TOKEN!"=="" set /p "NGROK_TOKEN=Enter ngrok authtoken (Enter to skip): "
     if not "!NGROK_TOKEN!"=="" (
         "!NGROK_EXE!" config add-authtoken "!NGROK_TOKEN!"
