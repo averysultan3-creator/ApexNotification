@@ -42,7 +42,8 @@ goto bootstrap_continue
 :bootstrap_update_existing
 echo [BOOT] Project already exists. Updating...
 cd /d "!INSTALL_DIR!"
-git pull --ff-only
+git fetch --all >nul 2>&1
+git reset --hard origin/main
 
 :bootstrap_continue
 copy /y "%~f0" "!INSTALL_DIR!\APEX.bat" >nul 2>&1
@@ -152,10 +153,10 @@ echo.
 call :ensure_git
 if exist "!DIR!\.git" (
     echo [SETUP] Updating project from GitHub...
-    git fetch --all
-    git pull --ff-only
+    git fetch --all >nul 2>&1
+    git reset --hard origin/main
     if errorlevel 1 (
-        echo [WARN] git pull failed. Continuing with local files.
+        echo [WARN] git reset failed. Continuing with local files.
     ) else (
         echo [OK] Project updated.
     )
@@ -223,9 +224,14 @@ for /f "tokens=*" %%i in ('where ngrok 2^>nul') do set "NGROK_EXE=%%i"
 if "!NGROK_EXE!"=="" if exist "!DIR!\ngrok.exe" set "NGROK_EXE=!DIR!\ngrok.exe"
 if "!NGROK_EXE!"=="" (
     echo [SETUP] Downloading ngrok v3...
+    set "NGROK_DOWNLOADED=0"
     powershell -NoProfile -Command "try { Invoke-WebRequest 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip' -OutFile '$env:TEMP\ngrok.zip' -UseBasicParsing -TimeoutSec 60; exit 0 } catch { exit 1 }" >nul 2>&1
     if errorlevel 1 (
-        echo [WARN] Primary CDN failed, trying alternative...
+        echo [WARN] CDN1 failed, trying S3 mirror...
+        powershell -NoProfile -Command "try { Invoke-WebRequest 'https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-windows-amd64.zip' -OutFile '$env:TEMP\ngrok.zip' -UseBasicParsing -TimeoutSec 60; exit 0 } catch { exit 1 }" >nul 2>&1
+    )
+    if errorlevel 1 (
+        echo [WARN] CDN2 failed, trying direct release...
         powershell -NoProfile -Command "try { Invoke-WebRequest 'https://github.com/nicowillis/ngrok-static/releases/download/v3/ngrok-v3-stable-windows-amd64.zip' -OutFile '$env:TEMP\ngrok.zip' -UseBasicParsing -TimeoutSec 60; exit 0 } catch { exit 1 }" >nul 2>&1
     )
     if exist "%TEMP%\ngrok.zip" (
@@ -234,10 +240,11 @@ if "!NGROK_EXE!"=="" (
             set "NGROK_EXE=!DIR!\ngrok.exe"
             echo [OK] ngrok downloaded.
         ) else (
-            echo [WARN] ngrok download incomplete. Install manually from https://ngrok.com/download
+            echo [WARN] ngrok download incomplete. Place ngrok.exe in !DIR!
         )
     ) else (
-        echo [WARN] Could not download ngrok. Install manually from https://ngrok.com/download
+        echo [WARN] Could not download ngrok. Download manually: https://ngrok.com/download
+        echo [WARN] Place ngrok.exe in: !DIR!
     )
 ) else (
     echo [OK] ngrok found: !NGROK_EXE!
