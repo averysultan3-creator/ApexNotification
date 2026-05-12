@@ -46,7 +46,6 @@ git fetch --all >nul 2>&1
 git reset --hard origin/main
 
 :bootstrap_continue
-copy /y "%~f0" "!INSTALL_DIR!\APEX.bat" >nul 2>&1
 :: If APEX_SECRETS.txt sits next to the bat file, use it as .env (fully unattended deploy)
 if exist "%~dp0APEX_SECRETS.txt" (
     echo [BOOT] Found APEX_SECRETS.txt - copying as .env...
@@ -641,7 +640,7 @@ if !GIT_BEHIND! GTR 0 (
         for /f %%t in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "BKP_TS=%%t"
         copy /Y "!DIR!\apex_lead_router.db" "!DIR!\backups\apex_lead_router_!BKP_TS!.db" >nul
     )
-    git pull origin main >nul 2>&1
+    git reset --hard origin/main >nul 2>&1
     "!PY!" -m pip install -r requirements.txt -q >nul 2>&1
     "!PY!" -m alembic upgrade head >nul 2>&1
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Auto-update applied (!GIT_BEHIND! commits). Server restarting." >nul 2>&1
@@ -718,10 +717,10 @@ if exist "!DIR!\apex_lead_router.db" (
     copy /Y "!DIR!\apex_lead_router.db" "!DIR!\backups\apex_lead_router_!BKP_TS!.db" >nul
     powershell -NoProfile -Command "Get-ChildItem '!DIR!\backups\apex_lead_router_*.db' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 20 | Remove-Item -Force -ErrorAction SilentlyContinue"
 )
-git pull origin main
+git reset --hard origin/main
 if errorlevel 1 (
-    echo [ERROR] git pull failed. Check connectivity or local conflicts.
-    if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Manual update failed during git pull. Check server console." >nul 2>&1
+    echo [ERROR] git reset failed. Check connectivity or local conflicts.
+    if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Manual update failed during git reset. Check server console." >nul 2>&1
     if defined APEX_CLI (exit /b 0)
 pause ^& goto menu
 )
