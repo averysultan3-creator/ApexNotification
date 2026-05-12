@@ -82,6 +82,7 @@ cd /d "!INSTALL_DIR!"
 set "DIR=!INSTALL_DIR!"
 set "PY=!INSTALL_DIR!\.venv\Scripts\python.exe"
 set "PID_FILE=!INSTALL_DIR!\runtime\server.pid"
+set "APEX_AUTORUN="
 goto menu
 
 :bootstrap_git_error
@@ -383,7 +384,7 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''py
 timeout /t 3 /nobreak >nul
 
 echo [START] Launching server...
-powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -NoNewWindow -RedirectStandardOutput '!DIR!\logs\server.log' -RedirectStandardError '!DIR!\logs\stderr.log' -PassThru; $proc.Id | Set-Content '!PID_FILE!'"
+powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -PassThru; $proc.Id | Set-Content '!PID_FILE!'" 
 
 :: Start ngrok if available
 set "NGROK_EXE="
@@ -402,7 +403,7 @@ if defined NGROK_EXE (
     echo [START] Restarting server with new public URL...
     powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     timeout /t 2 /nobreak >nul
-    powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -NoNewWindow -RedirectStandardOutput '!DIR!\logs\server.log' -RedirectStandardError '!DIR!\logs\stderr.log' -PassThru; $proc.Id | Set-Content '!PID_FILE!'"
+    powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -PassThru; $proc.Id | Set-Content '!PID_FILE!'" 
 ) else (
     echo [INFO] ngrok not found, skipping. Add ngrok.exe to this folder or run Setup.
 )
@@ -576,7 +577,7 @@ if "!WD_FAIL_COUNT!"=="3" (
 
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 timeout /t 3 /nobreak >nul
-powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -NoNewWindow -RedirectStandardOutput '!DIR!\logs\server.log' -RedirectStandardError '!DIR!\logs\stderr.log' -PassThru; $proc.Id | Set-Content '!PID_FILE!'"
+powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -PassThru; $proc.Id | Set-Content '!PID_FILE!'" 
 echo [%date% %time%] Server restarted (attempt !WD_FAIL_COUNT!). >> "!DIR!\logs\watchdog.log"
 
 timeout /t 60 /nobreak >nul
@@ -612,7 +613,7 @@ if not errorlevel 1 (
     :: Restart Python server so it picks up the new PUBLIC_BASE_URL from .env
     powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     timeout /t 3 /nobreak >nul
-    powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -NoNewWindow -RedirectStandardOutput '!DIR!\logs\server.log' -RedirectStandardError '!DIR!\logs\stderr.log' -PassThru; $proc.Id | Set-Content '!PID_FILE!'"
+    powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -PassThru; $proc.Id | Set-Content '!PID_FILE!'" 
     echo [%date% %time%] Server restarted with new PUBLIC_BASE_URL. >> "!DIR!\logs\watchdog.log"
 ) else (
     echo [%date% %time%] Failed to recover public URL. >> "!DIR!\logs\watchdog.log"
@@ -639,7 +640,7 @@ if !GIT_BEHIND! GTR 0 (
     if exist "!PY!" if exist "!DIR!\notify_admins.py" "!PY!" "!DIR!\notify_admins.py" "Auto-update applied (!GIT_BEHIND! commits). Server restarting." >nul 2>&1
     powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     timeout /t 3 /nobreak >nul
-    powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -NoNewWindow -RedirectStandardOutput '!DIR!\logs\server.log' -RedirectStandardError '!DIR!\logs\stderr.log' -PassThru; $proc.Id | Set-Content '!PID_FILE!'"
+    powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -PassThru; $proc.Id | Set-Content '!PID_FILE!'" 
     echo [%date% %time%] Updated and restarted. >> "!DIR!\logs\watchdog.log"
     echo [WATCHDOG] Update applied, server restarted.
     timeout /t 30 /nobreak >nul
@@ -737,7 +738,7 @@ echo [UPDATE] Restarting server...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*main.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 timeout /t 3 /nobreak >nul
 if not exist "!DIR!\logs"    mkdir "!DIR!\logs"
-powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -NoNewWindow -RedirectStandardOutput '!DIR!\logs\server.log' -RedirectStandardError '!DIR!\logs\stderr.log' -PassThru; $proc.Id | Set-Content '!PID_FILE!'"
+powershell -NoProfile -Command "$proc=Start-Process -FilePath '!PY!' -ArgumentList '-u','main.py','all' -WorkingDirectory '!DIR!' -WindowStyle Hidden -PassThru; $proc.Id | Set-Content '!PID_FILE!'" 
 timeout /t 8 /nobreak >nul
 powershell -NoProfile -Command "try { $r=Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' -UseBasicParsing -TimeoutSec 3; Write-Host '[OK] Server up: '+$r.Content } catch { Write-Host '[WARN] Server not responding yet - check Logs' }"
 echo.
