@@ -76,8 +76,13 @@ echo  Manage  : run APEX.bat from !INSTALL_DIR!
 echo  Watchdog: APEX.bat menu item 7
 echo ============================================================
 echo.
-pause
-exit /b 0
+echo  Opening management menu...
+echo.
+cd /d "!INSTALL_DIR!"
+set "DIR=!INSTALL_DIR!"
+set "PY=!INSTALL_DIR!\.venv\Scripts\python.exe"
+set "PID_FILE=!INSTALL_DIR!\runtime\server.pid"
+goto menu
 
 :bootstrap_git_error
 echo [ERROR] Git is required and could not be installed automatically.
